@@ -6,7 +6,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{D15B181F-E1A0-4A08-89BB-DDED9888AD27}</ProjectGuid>
+    <ProjectGuid>{656122F4-51B0-F188-D78A-9530E4D0226C}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>Assembly-CSharp</AssemblyName>
@@ -47,7 +47,7 @@
   <ItemGroup>
      <Compile Include="Assets\Scripts\ReneB_script1.cs" />
  <Reference Include="Assembly-UnityScript-firstpass">
- <HintPath>/Users/Shared/Unity/ReneB_MyFirstProject/Library/ScriptAssemblies/Assembly-UnityScript-firstpass.dll</HintPath>
+ <HintPath>/Users/fhict/ReneB/GitHub/rbakx/UnityRobot/James/Library/ScriptAssemblies/Assembly-UnityScript-firstpass.dll</HintPath>
  </Reference>
  <Reference Include="UnityEngine.Networking">
  <HintPath>/Applications/Unity/Unity.app/Contents/UnityExtensions/Unity/Networking/UnityEngine.Networking.dll</HintPath>
