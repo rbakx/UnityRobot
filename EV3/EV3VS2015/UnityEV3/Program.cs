@@ -36,7 +36,7 @@ namespace UnityEV3
         public StringBuilder sb = new StringBuilder();
     }
 
-        class EV3
+    public class EV3
     {
         private UdpClient socket;
         private IPEndPoint source;
@@ -127,14 +127,24 @@ namespace UnityEV3
                 Receive(client);
                 receiveDone.WaitOne();
 
-                // Write the response to the console.
-                Console.WriteLine("Response received : {0}", response);
-                Console.Write("press any key to exit");
+                Console.WriteLine("press any key to continue");
+                Console.ReadLine();
+                byte[] byteArray = new byte[] { 0x10, 0x00, 0x00, 0x00, 0x81, 0x9E, 0x03, (byte) 'A', (byte) 'B', (byte) '\0', 0x05, 0x00, (byte) 'h', (byte) 'e', (byte) 'l', (byte) 'l', (byte) 'o', (byte) '\0' };
+                Send(client, byteArray);
+                sendDone.WaitOne();
+
+                Console.WriteLine("press any key to continue");
+                Console.ReadLine();
+                byteArray = new byte[] { 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x7F, 0x01, 0x00, 0x00, 0x05, 0x60 };
+                Send(client, byteArray);
+                sendDone.WaitOne();
+                Console.WriteLine("press any key to exit");
                 Console.ReadLine();
 
                 // Release the socket.
                 client.Shutdown(SocketShutdown.Both);
                 client.Close();
+
 
             }
             catch (Exception e)
@@ -192,7 +202,7 @@ namespace UnityEV3
                 StateObject state = (StateObject)ar.AsyncState;
                 Socket client = state.workSocket;
 
-                // Read data from the remote device.
+                // Read data from the remote device. 
                 int bytesRead = client.EndReceive(ar);
 
                 if (bytesRead > 0)
@@ -205,6 +215,12 @@ namespace UnityEV3
                         new AsyncCallback(ReceiveCallback), state);
                     // Put data it in response.
                     response = state.sb.ToString();
+                    // Write the response to the console.
+                    Console.WriteLine("Response received : {0}", response);
+                    for (int i = 0; i < 32; i++)
+                    {
+                        Console.WriteLine(state.buffer[i]);
+                    }
                     receiveDone.Set();
                 }
             }
@@ -219,6 +235,13 @@ namespace UnityEV3
             // Convert the string data to byte data using ASCII encoding.
             byte[] byteData = Encoding.ASCII.GetBytes(data);
 
+            // Begin sending the data to the remote device.
+            client.BeginSend(byteData, 0, byteData.Length, 0,
+                new AsyncCallback(SendCallback), client);
+        }
+
+        private void Send(Socket client, byte[] byteData)
+        {
             // Begin sending the data to the remote device.
             client.BeginSend(byteData, 0, byteData.Length, 0,
                 new AsyncCallback(SendCallback), client);
