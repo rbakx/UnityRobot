@@ -1,28 +1,12 @@
 ﻿using System;
-using System.IO;
 using System.Net;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
 
-
-namespace UnityEV3
+namespace EV3WifiLib
 {
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            String serialNumber;
-            Console.WriteLine("Welcome to the EV3 communication example!");
-            EV3 myEV3 = new EV3();
-            myEV3.ConnectToEv3();
-            myEV3.StartTCPClient();
-        }
-    }
-
     // State object for receiving data from remote device.
     public class StateObject
     {
@@ -36,116 +20,122 @@ namespace UnityEV3
         public StringBuilder sb = new StringBuilder();
     }
 
-    public class EV3
+    public class EV3Wifi
     {
-        private UdpClient socket;
+        private UdpClient udpSocket;
         private IPEndPoint source;
-        private IPEndPoint target;
-        private String serialNumber;
-        // static array to keep the message which is filled by the asynchronous callback method.
-        public static byte[] message = new byte[1024];
-
-        // The port number for the remote device.
-        private const int port = 11000;
+        public IPEndPoint target;
+        public String serialNumber;
+        public Socket tcpSocket;
+        // Array to keep the message which is filled by the asynchronous callback method.
+        public byte[] message = new byte[1024];
 
         // ManualResetEvent instances signal completion.
-        private static ManualResetEvent connectDone =
-            new ManualResetEvent(false);
-        private static ManualResetEvent sendDone =
-            new ManualResetEvent(false);
-        private static ManualResetEvent receiveDone =
-            new ManualResetEvent(false);
+        private ManualResetEvent connectDone = new ManualResetEvent(false);
+        private ManualResetEvent sendDone = new ManualResetEvent(false);
+        private ManualResetEvent receiveDone = new ManualResetEvent(false);
 
         // The response from the remote device.
-        private static String response = String.Empty;
-
+        private String response = String.Empty;
 
         private void OnUdpData(IAsyncResult result)
         {
             // This is what had been passed into BeginReceive as the second parameter.
-            UdpClient socket = result.AsyncState as UdpClient;
-            // Get the actual message and fill out the source.
-            message = socket.EndReceive(result, ref source);
-            // Schedule the next receive operation once reading is done.
-            socket.BeginReceive(new AsyncCallback(OnUdpData), socket);
+            try
+            {
+                UdpClient udpsocket = result.AsyncState as UdpClient;
+                // Get the actual message and fill out the source.
+                message = udpsocket.EndReceive(result, ref source);
+                // Schedule the next receivsee operation once reading is done.
+                udpsocket.BeginReceive(new AsyncCallback(OnUdpData), udpsocket);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
         }
 
-        public void ConnectToEv3()
+        public Boolean Connect()
+        {
+            Boolean ok = NegotiateUdp();
+            if (ok != true)
+            {
+                return false;
+            }
+            return (StartTCPClient());
+        }
+
+        private Boolean NegotiateUdp()
         {
             // Creates a UdpClient for reading incoming data.
             // With no port number specified the UdpClient will automatically pick an available port number as the source port.
-            socket = new UdpClient(3015);
-            // Schedule the first receive operation.
-            socket.BeginReceive(new AsyncCallback(OnUdpData), socket);
-            target = new IPEndPoint(IPAddress.Parse("192.168.1.42"), 12345);
-
-            Boolean UdpConfirmed = false;
-            while (UdpConfirmed == false)
+            try
             {
-                String msgStr = Encoding.ASCII.GetString(message, 0, message.Length);
-                Regex regex = new Regex("Serial-Number: (.*)");
-                Match match = regex.Match(msgStr);
-                if (match.Success)
-                {
-                    serialNumber = match.Groups[1].Value;
-                    Console.WriteLine("match: " + serialNumber + "\n");
-                    Console.WriteLine("going to send hi to: " + source + "\n");
-                    byte[] msg = Encoding.ASCII.GetBytes("hi");
-                    socket.Send(msg, msg.Length, source);
-                    UdpConfirmed = true;
-                }
-                else
-                {
-                    Console.WriteLine("no match: " + "\n");
-                }
-            }
+                udpSocket = new UdpClient(3015);
+                // Schedule the first receive operation.
+                udpSocket.BeginReceive(new AsyncCallback(OnUdpData), udpSocket);
 
+                Boolean UdpConfirmed = false;
+                while (UdpConfirmed == false)
+                {
+                    String msgStr = Encoding.ASCII.GetString(message, 0, message.Length);
+                    Regex regex = new Regex("Serial-Number: (.*)");
+                    Match match = regex.Match(msgStr);
+                    if (match.Success)
+                    {
+                        serialNumber = match.Groups[1].Value;
+                        byte[] msg = Encoding.ASCII.GetBytes("hi");
+                        udpSocket.Send(msg, msg.Length, source);
+                        UdpConfirmed = true;
+                    }
+                }
+                return true;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+                return false;
+            }
         }
 
-        public void StartTCPClient()
+        private Boolean StartTCPClient()
         {
             // Connect to a remote device.
             try
             {
                 // Create a TCP/IP socket.
-                Socket client = new Socket(AddressFamily.InterNetwork,
-                    SocketType.Stream, ProtocolType.Tcp);
+                tcpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
                 // Connect to the remote endpoint.
 
-                IPEndPoint remoteEP = new IPEndPoint(source.Address, 5555);
-                client.BeginConnect(remoteEP,
-                    new AsyncCallback(ConnectCallback), client);
+                target = new IPEndPoint(source.Address, 5555);
+                tcpSocket.BeginConnect(target, new AsyncCallback(ConnectCallback), tcpSocket);
                 connectDone.WaitOne();
 
                 // Send test data to the remote device.
                 String str = "GET /target?sn=" + serialNumber + " VMTP1.0\nProtocol: EV3";
-                Send(client, str);
-                sendDone.WaitOne();
+                Send(tcpSocket, str);
 
                 // Receive the response from the remote device.
-                Receive(client);
+                StartReceive(tcpSocket);
                 receiveDone.WaitOne();
+                return true;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+                return false;
+            }
+        }
 
-                Console.WriteLine("press any key to continue");
-                Console.ReadLine();
-                byte[] byteArray = new byte[] { 0x10, 0x00, 0x00, 0x00, 0x81, 0x9E, 0x03, (byte) 'A', (byte) 'B', (byte) '\0', 0x05, 0x00, (byte) 'h', (byte) 'e', (byte) 'l', (byte) 'l', (byte) 'o', (byte) '\0' };
-                Send(client, byteArray);
-                sendDone.WaitOne();
-
-                Console.WriteLine("press any key to continue");
-                Console.ReadLine();
-                byteArray = new byte[] { 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x7F, 0x01, 0x00, 0x00, 0x05, 0x60 };
-                Send(client, byteArray);
-                sendDone.WaitOne();
-                Console.WriteLine("press any key to exit");
-                Console.ReadLine();
-
+        public void StopTCPClient()
+        {
+            // Disconnect from remote device.
+            try
+            {
                 // Release the socket.
-                client.Shutdown(SocketShutdown.Both);
-                client.Close();
-
-
+                tcpSocket.Shutdown(SocketShutdown.Both);
+                tcpSocket.Close();
             }
             catch (Exception e)
             {
@@ -163,9 +153,6 @@ namespace UnityEV3
                 // Complete the connection.
                 client.EndConnect(ar);
 
-                Console.WriteLine("Socket connected to {0}",
-                    client.RemoteEndPoint.ToString());
-
                 // Signal that the connection has been made.
                 connectDone.Set();
             }
@@ -175,7 +162,7 @@ namespace UnityEV3
             }
         }
 
-        private void Receive(Socket client)
+        private void StartReceive(Socket client)
         {
             try
             {
@@ -197,7 +184,7 @@ namespace UnityEV3
         {
             try
             {
-                // Retrieve the state object and the client socket 
+                // Retrieve the state object and the client socket .
                 // from the asynchronous state object.
                 StateObject state = (StateObject)ar.AsyncState;
                 Socket client = state.workSocket;
@@ -215,12 +202,6 @@ namespace UnityEV3
                         new AsyncCallback(ReceiveCallback), state);
                     // Put data it in response.
                     response = state.sb.ToString();
-                    // Write the response to the console.
-                    Console.WriteLine("Response received : {0}", response);
-                    for (int i = 0; i < 32; i++)
-                    {
-                        Console.WriteLine(state.buffer[i]);
-                    }
                     receiveDone.Set();
                 }
             }
@@ -230,7 +211,21 @@ namespace UnityEV3
             }
         }
 
-        private void Send(Socket client, String data)
+        public String Receive()
+        {
+            try
+            {
+                // Retrieve the response string.
+                return response;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+                return "";
+            }
+        }
+
+        public void Send(Socket client, String data)
         {
             // Convert the string data to byte data using ASCII encoding.
             byte[] byteData = Encoding.ASCII.GetBytes(data);
@@ -240,7 +235,7 @@ namespace UnityEV3
                 new AsyncCallback(SendCallback), client);
         }
 
-        private void Send(Socket client, byte[] byteData)
+        public void Send(Socket client, byte[] byteData)
         {
             // Begin sending the data to the remote device.
             client.BeginSend(byteData, 0, byteData.Length, 0,
@@ -256,7 +251,6 @@ namespace UnityEV3
 
                 // Complete sending the data to the remote device.
                 int bytesSent = client.EndSend(ar);
-                Console.WriteLine("Sent {0} bytes to server.", bytesSent);
 
                 // Signal that all bytes have been sent.
                 sendDone.Set();
@@ -266,6 +260,5 @@ namespace UnityEV3
                 Console.WriteLine(e.ToString());
             }
         }
-
     }
 }
