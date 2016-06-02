@@ -12,8 +12,9 @@ namespace EV3WifiTest
             myEV3.Connect();
             Console.WriteLine("Connected, press any key to continue");
             Console.ReadLine();
-            byte[] byteArray = new byte[] { 0x10, 0x00, 0x00, 0x00, 0x81, 0x9E, 0x03, (byte)'A', (byte)'B', (byte)'\0', 0x05, 0x00, (byte)'h', (byte)'e', (byte)'l', (byte)'l', (byte)'o', (byte)'\0' };
-            myEV3.Send(myEV3.tcpSocket, byteArray);
+            myEV3.SendMessage("beep", "AB");
+            String message = myEV3.ReceiveMessage();
+            Console.WriteLine("Message received : {0}", message);
 
             Console.WriteLine("String sent, press any key to continue");
             Console.ReadLine();

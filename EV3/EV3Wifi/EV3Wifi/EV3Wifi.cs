@@ -260,5 +260,34 @@ namespace EV3WifiLib
                 Console.WriteLine(e.ToString());
             }
         }
+
+        public void SendMessage(String msg, String mbox)
+        {
+            byte[] byteArray;
+            int len = 9 + msg.Length + 1 + mbox.Length + 1;  // +1 because of the null termination character.
+            byteArray = new byte[len];
+            copyArray(byteArray, new byte[] { 0x00, 0x00, 0x00, 0x00, 0x81, 0x9E, 0x00 }, 0);
+            copyArray(byteArray, Encoding.ASCII.GetBytes(mbox), 7);
+            copyArray(byteArray, new byte[] { (byte) '\0' }, 7 + mbox.Length);
+            copyArray(byteArray, Encoding.ASCII.GetBytes(msg), 7 + mbox.Length + 3);
+            copyArray(byteArray, new byte[] { (byte) '\0' }, 7 + mbox.Length + 3 + msg.Length);
+            byteArray[0] = (byte) (len - 2);  // length of array excluding the two length bytes
+            byteArray[6] = (byte)(mbox.Length + 1);  // length of mailbox name
+            byteArray[7 + mbox.Length + 1] = (byte)(msg.Length + 1);  // length of message
+            Send(tcpSocket, byteArray);
+        }
+
+        public String ReceiveMessage()
+        {
+            return "";
+        }
+
+        private void copyArray( byte[] ar1,  byte[] ar2, int pos)
+        {
+            for (int i = 0; i < ar2.Length; i++)
+            {
+                ar1[i + pos] = ar2[i];
+            }
+        }
     }
 }

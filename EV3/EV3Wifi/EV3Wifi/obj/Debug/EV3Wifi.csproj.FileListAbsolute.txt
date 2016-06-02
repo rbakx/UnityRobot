@@ -8,6 +8,5 @@ C:\Users\reneb\Documents\Visual Studio 2015\Projects\EV3\EV3Wifi\obj\Debug\EV3Wi
 C:\Users\reneb\Documents\Visual Studio 2015\Projects\EV3\EV3Wifi\obj\Debug\EV3WifiLib.pdb
 C:\Users\reneb\Documents\Visual Studio 2015\Projects\EV3Wifi\EV3Wifi\bin\Debug\EV3WifiLib.dll
 C:\Users\reneb\Documents\Visual Studio 2015\Projects\EV3Wifi\EV3Wifi\bin\Debug\EV3WifiLib.pdb
-C:\Users\reneb\Documents\Visual Studio 2015\Projects\EV3Wifi\EV3Wifi\obj\Debug\EV3Wifi.csprojResolveAssemblyReference.cache
 C:\Users\reneb\Documents\Visual Studio 2015\Projects\EV3Wifi\EV3Wifi\obj\Debug\EV3WifiLib.dll
 C:\Users\reneb\Documents\Visual Studio 2015\Projects\EV3Wifi\EV3Wifi\obj\Debug\EV3WifiLib.pdb
