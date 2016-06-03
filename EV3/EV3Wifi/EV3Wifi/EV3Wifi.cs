@@ -57,12 +57,20 @@ namespace EV3WifiLib
 
         public Boolean Connect()
         {
-            Boolean ok = NegotiateUdp();
-            if (ok != true)
+            try
             {
+                Boolean ok = NegotiateUdp();
+                if (ok != true)
+                {
+                    return false;
+                }
+                return (StartTCPClient());
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
                 return false;
             }
-            return (StartTCPClient());
         }
 
         private Boolean NegotiateUdp()
@@ -116,7 +124,7 @@ namespace EV3WifiLib
                 String str = "GET /target?sn=" + serialNumber + " VMTP1.0\nProtocol: EV3";
                 Send(tcpSocket, str);
 
-                // Receive the response from the remote device.
+                // Receive the responses from the remote device.
                 StartReceive(tcpSocket);
                 receiveDone.WaitOne();
                 return true;
@@ -192,54 +200,48 @@ namespace EV3WifiLib
                 // Read data from the remote device. 
                 int bytesRead = client.EndReceive(ar);
 
-                if (bytesRead > 0)
-                {
-                    // There might be more data, so store the data received so far.
-                    state.sb.Append(Encoding.ASCII.GetString(state.buffer, 0, bytesRead));
 
-                    // Continue receiving the data from the remote device.
-                    client.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0,
-                        new AsyncCallback(ReceiveCallback), state);
-                    // Put data it in response.
-                    response = state.sb.ToString();
-                    receiveDone.Set();
-                }
+                state.sb.Append(Encoding.ASCII.GetString(state.buffer, 0, bytesRead));
+
+                // Continue receiving the data from the remote device.
+                client.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0, new AsyncCallback(ReceiveCallback), state);
+                // Put data it in response.
+                response = state.sb.ToString();
+                receiveDone.Set();
             }
             catch (Exception e)
             {
                 Console.WriteLine(e.ToString());
-            }
-        }
-
-        public String Receive()
-        {
-            try
-            {
-                // Retrieve the response string.
-                return response;
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
-                return "";
             }
         }
 
         public void Send(Socket client, String data)
         {
-            // Convert the string data to byte data using ASCII encoding.
-            byte[] byteData = Encoding.ASCII.GetBytes(data);
+            try
+            {
+                // Convert the string data to byte data using ASCII encoding.
+                byte[] byteData = Encoding.ASCII.GetBytes(data);
 
-            // Begin sending the data to the remote device.
-            client.BeginSend(byteData, 0, byteData.Length, 0,
-                new AsyncCallback(SendCallback), client);
+                // Begin sending the data to the remote device.
+                client.BeginSend(byteData, 0, byteData.Length, 0, new AsyncCallback(SendCallback), client);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
         }
 
         public void Send(Socket client, byte[] byteData)
         {
-            // Begin sending the data to the remote device.
-            client.BeginSend(byteData, 0, byteData.Length, 0,
-                new AsyncCallback(SendCallback), client);
+            try
+            {
+                // Begin sending the data to the remote device.
+                client.BeginSend(byteData, 0, byteData.Length, 0, new AsyncCallback(SendCallback), client);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
         }
 
         private void SendCallback(IAsyncResult ar)
@@ -263,30 +265,84 @@ namespace EV3WifiLib
 
         public void SendMessage(String msg, String mbox)
         {
-            byte[] byteArray;
-            int len = 9 + msg.Length + 1 + mbox.Length + 1;  // +1 because of the null termination character.
-            byteArray = new byte[len];
-            copyArray(byteArray, new byte[] { 0x00, 0x00, 0x00, 0x00, 0x81, 0x9E, 0x00 }, 0);
-            copyArray(byteArray, Encoding.ASCII.GetBytes(mbox), 7);
-            copyArray(byteArray, new byte[] { (byte) '\0' }, 7 + mbox.Length);
-            copyArray(byteArray, Encoding.ASCII.GetBytes(msg), 7 + mbox.Length + 3);
-            copyArray(byteArray, new byte[] { (byte) '\0' }, 7 + mbox.Length + 3 + msg.Length);
-            byteArray[0] = (byte) (len - 2);  // length of array excluding the two length bytes
-            byteArray[6] = (byte)(mbox.Length + 1);  // length of mailbox name
-            byteArray[7 + mbox.Length + 1] = (byte)(msg.Length + 1);  // length of message
-            Send(tcpSocket, byteArray);
-        }
-
-        public String ReceiveMessage()
-        {
-            return "";
-        }
-
-        private void copyArray( byte[] ar1,  byte[] ar2, int pos)
-        {
-            for (int i = 0; i < ar2.Length; i++)
+            try
             {
-                ar1[i + pos] = ar2[i];
+                byte[] byteArray;
+                int len = 11 + msg.Length + mbox.Length;
+                byteArray = new byte[len];
+                copyArray(byteArray, new byte[] { 0x00, 0x00, 0x00, 0x00, 0x81, 0x9E, 0x00 }, 0);
+                copyArray(byteArray, Encoding.ASCII.GetBytes(mbox), 7);
+                copyArray(byteArray, new byte[] { (byte)'\0' }, 7 + mbox.Length);
+                copyArray(byteArray, Encoding.ASCII.GetBytes(msg), 7 + mbox.Length + 3);
+                copyArray(byteArray, new byte[] { (byte)'\0' }, 7 + mbox.Length + 3 + msg.Length);
+                byteArray[0] = (byte)(len - 2);  // length of array excluding the two length bytes
+                byteArray[6] = (byte)(mbox.Length + 1);  // length of mailbox name
+                byteArray[7 + mbox.Length + 1] = (byte)(msg.Length + 1);  // length of message
+                Send(tcpSocket, byteArray);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
+        }
+
+        private void startReceiveMessage(String project, String mbox)
+        {
+            try
+            {
+                String fileName = "../prjs/" + project + "/" + mbox + ".rtf";
+                byte[] byteArray;
+                int len = 21 + fileName.Length;
+
+                byteArray = new byte[len];
+                copyArray(byteArray, new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x00, 0xC0, 0x01, 0x84 }, 0);
+                copyArray(byteArray, Encoding.ASCII.GetBytes(fileName), 10);
+                copyArray(byteArray, new byte[] { (byte)'\0', 0x60, 0x64, 0xC0, 0x03, 0x60, 0x00, 0x68, 0xC0, 0x07, 0x60 }, 10 + fileName.Length);
+                byteArray[0] = (byte)(len - 2);  // length of array excluding the two length bytes
+                Send(tcpSocket, byteArray);
+                /*
+                for (int i = 0; i < byteArray.Length; i++)
+                {
+                    Console.WriteLine("byteArray[{0}] = {1:X}, {2}", i, byteArray[i], (char)byteArray[i]);
+                }
+                */
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
+        }
+
+        public String ReceiveMessage(String project, String mbox)
+        {
+            try
+            {
+                // Retrieve the response string.
+                String tmpResponse = response;
+                response = "";  // clear response to indicate it is handled.
+                // Initiate the next message retrieval from the EV3.
+                startReceiveMessage(project, mbox);
+                return tmpResponse;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+                return "";
+            }
+        }
+
+        private void copyArray(byte[] ar1, byte[] ar2, int pos)
+        {
+            try
+            {
+                for (int i = 0; i < ar2.Length; i++)
+                {
+                    ar1[i + pos] = ar2[i];
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
             }
         }
     }
