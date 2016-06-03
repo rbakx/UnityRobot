@@ -196,17 +196,36 @@ namespace EV3WifiLib
                 // from the asynchronous state object.
                 StateObject state = (StateObject)ar.AsyncState;
                 Socket client = state.workSocket;
+                String tmpResponse = "";
 
                 // Read data from the remote device. 
                 int bytesRead = client.EndReceive(ar);
-
-
-                state.sb.Append(Encoding.ASCII.GetString(state.buffer, 0, bytesRead));
-
+                if (bytesRead == 256)
+                {
+                    // If this is the response on opFile(READ_TEXT), extract the text from the response.
+                    // If the file is not found, the length of the file = state.buffer[9] will be set to 0.
+                    // In this case, leave tmpResponse = "" so the previous response will not be overwritten.
+                    if (state.buffer[9] != 0)
+                    {
+                        tmpResponse = Encoding.ASCII.GetString(state.buffer, 13, state.buffer[9] - 1);
+                    }
+                }
+                else
+                {
+                    // For any other response, just return the complete response.
+                    tmpResponse = Encoding.ASCII.GetString(state.buffer, 0, bytesRead);
+                }
+                // Only overwrite response if state.buffer contains a valid string.
+                // This check is needed because for example the opFile(CLOSE) command will give an empty response.
+                // opFile(CLOSE) is issued right after opFile(READ_TEXT) so it would otherwise overwrite the
+                // response on opFile(READ_TEXT).
+                // The check is done by cheking the first two length bytes which should not be 0.
+                if (tmpResponse != "" && (state.buffer[0] != 0 || state.buffer[0] != 0))
+                {
+                    response = tmpResponse;
+                }
                 // Continue receiving the data from the remote device.
                 client.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0, new AsyncCallback(ReceiveCallback), state);
-                // Put data it in response.
-                response = state.sb.ToString();
                 receiveDone.Set();
             }
             catch (Exception e)
@@ -290,14 +309,15 @@ namespace EV3WifiLib
         {
             try
             {
+                //String fileName = "../Projects/" + project + "/" + mbox + ".rtf";
                 String fileName = "../prjs/" + project + "/" + mbox + ".rtf";
                 byte[] byteArray;
-                int len = 21 + fileName.Length;
+                int len = 22 + fileName.Length;
 
                 byteArray = new byte[len];
-                copyArray(byteArray, new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x00, 0xC0, 0x01, 0x84 }, 0);
+                copyArray(byteArray, new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0xC0, 0x01, 0x84 }, 0);
                 copyArray(byteArray, Encoding.ASCII.GetBytes(fileName), 10);
-                copyArray(byteArray, new byte[] { (byte)'\0', 0x60, 0x64, 0xC0, 0x03, 0x60, 0x00, 0x68, 0xC0, 0x07, 0x60 }, 10 + fileName.Length);
+                copyArray(byteArray, new byte[] { (byte)'\0', 0x60, 0x64, 0xC0, 0x05, 0x60, 0x00, 0xFF, 0x68, 0xC0, 0x07, 0x60 }, 10 + fileName.Length);
                 byteArray[0] = (byte)(len - 2);  // length of array excluding the two length bytes
                 Send(tcpSocket, byteArray);
                 /*

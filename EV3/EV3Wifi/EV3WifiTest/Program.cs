@@ -7,7 +7,7 @@ namespace EV3WifiTest
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Welcome to the EV3 communication example!");
+            Console.WriteLine("Welcome to the EV3 Wifi communication example!");
             EV3Wifi myEV3 = new EV3Wifi();
 
             myEV3.Connect();
@@ -18,7 +18,8 @@ namespace EV3WifiTest
             myEV3.SendMessage("beep", "INBOX");
             // Calling ReceiveMessage is non -blocking. It will retrieve the previous message and initiate a new message retrieval.
             String response = myEV3.ReceiveMessage("EV3Wifi", "OUTBOX");
-            Console.WriteLine("String sent, press any key to continue");
+            Console.WriteLine("String sent and response received : {0}", response);
+            Console.WriteLine("Press any key to continue");
             Console.ReadLine();
             // ReceiveMessage will now return the response (if any) to the SendMessage.
             response = myEV3.ReceiveMessage("EV3Wifi", "OUTBOX");
