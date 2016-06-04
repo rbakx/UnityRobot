@@ -2,10 +2,9 @@
 using System.Collections;
 using System;
 using System.Net;
-using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using EV3WifiLib;
-
 
 
 // Example script which serves as a proof of concept of a robot controlled from Unity.
@@ -28,16 +27,16 @@ public class ReneB_script1 : MonoBehaviour {
 
 	public float speed;
 	private Rigidbody rb;
-	private UdpClient socket;
-	private IPEndPoint target;
+	private EV3Wifi myEV3;
 	private String strDistance = "";
 	private long ms, msPrevious = 0;
-	private EV3Wifi myEV3;
+	private float moveHorizontal, moveVertical = 0f;
 
 	void Start() {
 		rb = GetComponent<Rigidbody>();
 		myEV3 = new EV3Wifi();
-		myEV3.Connect();
+		String status = myEV3.Connect();
+		Debug.Log ("Connection status: " + status);
 	}
 
 	void Update () {
@@ -46,9 +45,37 @@ public class ReneB_script1 : MonoBehaviour {
 
 	void FixedUpdate () {			
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
-		if (ms - msPrevious > 400) {
+		if (ms - msPrevious > 100) {
+			moveHorizontal = Input.GetAxis ("Horizontal");
+			moveVertical = Input.GetAxis ("Vertical");
+			if (moveHorizontal > 0) {
+				myEV3.SendMessage("forward", "MOVE");
+			}
+			else if (moveHorizontal < 0) {
+				myEV3.SendMessage("backward", "MOVE");
+			}
+
+			myEV3.SendMessage("get_distance", "STATUS");
+			// Calling ReceiveMessage is non -blocking. It will retrieve the previous message and initiate a new message retrieval.
+			strDistance = myEV3.ReceiveMessage("EV3Wifi", "DISTANCE");
+			// do what you'd like with `message` here:
+			Debug.Log("Distance: " + strDistance + "hi");
+			float distance;
+			if (float.TryParse (strDistance, out distance)) {
+				moveHorizontal = (distance - 50) / 1;
+				moveVertical = 0;
+				Vector3 position = new Vector3((distance - 50)/10, (float) 0.1, 0);
+				rb.MovePosition (position);
+
+				if (distance > 53.0) {
+					myEV3.SendMessage ("forward", "MOVE");
+				} else if (distance < 47.0) {
+					myEV3.SendMessage ("backward", "MOVE");
+				} else {
+					myEV3.SendMessage ("stop", "MOVE");
+				}
+			}
 			msPrevious = ms;
-			myEV3.SendMessage("beep", "AB");
 		}
 	}
 }
