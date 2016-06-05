@@ -67,13 +67,11 @@ public class ReneB_script1 : MonoBehaviour {
 				Vector3 position = new Vector3((distance - 50)/10, (float) 0.1, 0);
 				rb.MovePosition (position);
 
-				if (distance > 53.0) {
-					myEV3.SendMessage ("forward", "MOVE");
-				} else if (distance < 47.0) {
-					myEV3.SendMessage ("backward", "MOVE");
-				} else {
-					myEV3.SendMessage ("stop", "MOVE");
-				}
+				float speed = (float) ((distance - 50.0) * 2);
+				// Limit speed to [-100, 100] interval.
+				speed = Math.Max(-100, speed);
+				speed = Math.Min(100, speed);
+				myEV3.SendMessage(speed, "SPEED");
 			}
 			msPrevious = ms;
 		}

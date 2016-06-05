@@ -24,14 +24,11 @@ namespace EV3WifiTest
                 Console.WriteLine("Response received : {0}", strDistance);
                 if (float.TryParse(strDistance, out distance))
                 {
-                    if (distance > 53.0)
-                    {
-                        myEV3.SendMessage("forward", "MOVE");
-                    }
-                    else if (distance < 47.0)
-                    {
-                        myEV3.SendMessage("backward", "MOVE");
-                    }
+                    float speed = (float)((distance - 50.0) * 2);
+                    // Limit speed to [-100, 100] interval.
+                    speed = Math.Max(-100, speed);
+                    speed = Math.Min(100, speed);
+                    myEV3.SendMessage(speed, "SPEED");
                 }
                 Thread.Sleep(100);
             }

@@ -73,60 +73,6 @@ namespace EV3WifiLib
             }
         }
 
-        // Send message to EV3.
-        public void SendMessage(String msg, String mbox)
-        {
-            try
-            {
-                // Send message using System Command 'WRITEMAILBOX'.
-                byte[] byteArray;
-                int len = 11 + msg.Length + mbox.Length;
-                byteArray = new byte[len];
-                // See the EV3 System Command documentation for the definition of the bytes.
-                // byte 0..1: length bytes little endian (LSB on lowest adress so on byte 0).
-                // byte 2..3: message counter, not used, set to 0x00.
-                // byte 4: command type: 0x81 = SYSTEM_COMMAND_NO_REPLY.
-                // byte 5: System Command: 0x9E = WRITEMAILBOX.
-                // byte 6: length of mailbox name including null termination character.
-                // byte 7..n: mailbox name.
-                // byte n+1: null termination character: '\0'.
-                // byte n+2,n+3: length of message little endian (LSB on lowest adress so on byte n+2).
-                // byte n+4..n+m: message including null termination character: '\0'.
-                copyArray(byteArray, new byte[] { 0x00, 0x00, 0x00, 0x00, 0x81, 0x9E, 0x00 }, 0);
-                copyArray(byteArray, Encoding.ASCII.GetBytes(mbox), 7);
-                copyArray(byteArray, new byte[] { (byte)'\0' }, 7 + mbox.Length);
-                copyArray(byteArray, Encoding.ASCII.GetBytes(msg), 7 + mbox.Length + 3);
-                copyArray(byteArray, new byte[] { (byte)'\0' }, 7 + mbox.Length + 3 + msg.Length);
-                byteArray[0] = (byte)(len - 2);  // length of array excluding the two length bytes
-                byteArray[6] = (byte)(mbox.Length + 1);  // length of mailbox name
-                byteArray[7 + mbox.Length + 1] = (byte)(msg.Length + 1);  // length of message
-                Send(tcpSocket, byteArray);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
-            }
-        }
-
-        // Receive message from EV3.
-        public String ReceiveMessage(String project, String mbox)
-        {
-            try
-            {
-                // Retrieve the response string.
-                String tmpResponse = response;
-                response = "";  // lear response to indicate it is handled
-                // Initiate the next message retrieval from the EV3.
-                startReceiveMessage(project, mbox);
-                return tmpResponse;
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
-                return "";
-            }
-        }
-
         // UDP data callback method.
         private void OnUdpData(IAsyncResult result)
         {
@@ -149,10 +95,10 @@ namespace EV3WifiLib
         private String NegotiateUdp()
         {
             // Creates a UdpClient for reading incoming data.
-            // With no port number specified the UdpClient will automatically pick an available port number as the source port.
+            // When no port number specified the UdpClient will automatically pick an available port number as the source port.
             try
             {
-                udpSocket = new UdpClient(3015);
+                udpSocket = new UdpClient(3015);  // listen for a UDP broadcast from the EV3 on port 3015
                 // Schedule the first receive operation.
                 udpSocket.BeginReceive(new AsyncCallback(OnUdpData), udpSocket);
 
@@ -250,6 +196,95 @@ namespace EV3WifiLib
             }
         }
 
+        // Send message containing a string to the EV3.
+        public void SendMessage(String msg, String mbox)
+        {
+            try
+            {
+                // Send message using System Command 'WRITEMAILBOX'.
+                byte[] byteArray;
+                int len = 11 + msg.Length + mbox.Length;
+                byteArray = new byte[len];
+                // See the EV3 System Command documentation for the definition of the bytes.
+                // byte 0..1: length bytes little endian (LSB on lowest address so on byte 0).
+                // byte 2..3: message counter, not used, set to 0x00.
+                // byte 4: command type: 0x81 = SYSTEM_COMMAND_NO_REPLY.
+                // byte 5: System Command: 0x9E = WRITEMAILBOX.
+                // byte 6: length of mailbox name including null termination character.
+                // byte 7..n: mailbox name.
+                // byte n+1: null termination character: '\0'.
+                // byte n+2,n+3: length of message little endian (LSB on lowest address so on byte n+2).
+                // byte n+4..n+m: message including null termination character: '\0'.
+                copyArray(byteArray, new byte[] { 0x00, 0x00, 0x00, 0x00, 0x81, 0x9E, 0x00 }, 0);
+                copyArray(byteArray, Encoding.ASCII.GetBytes(mbox), 7);
+                copyArray(byteArray, new byte[] { (byte) '\0' }, 7 + mbox.Length);
+                copyArray(byteArray, Encoding.ASCII.GetBytes(msg), 7 + mbox.Length + 3);
+                copyArray(byteArray, new byte[] { (byte) '\0' }, 7 + mbox.Length + 3 + msg.Length);
+                byteArray[0] = (byte) (len - 2);  // length of array excluding the two length bytes
+                byteArray[6] = (byte) (mbox.Length + 1);  // length of mailbox name
+                byteArray[7 + mbox.Length + 1] = (byte) (msg.Length + 1);  // length of message
+                Send(tcpSocket, byteArray);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
+        }
+
+        // Send message containing a 4 byte IEEE 754 single-precision binary floating-point to the EV3.
+        public void SendMessage(float msg, String mbox)
+        {
+            try
+            {
+                // Send message using System Command 'WRITEMAILBOX'.
+                byte[] byteArray;
+                int len = 14 + mbox.Length;
+                byteArray = new byte[len];
+                // See the EV3 System Command documentation for the definition of the bytes.
+                // byte 0..1: length bytes little endian (LSB on lowest address so on byte 0).
+                // byte 2..3: message counter, not used, set to 0x00.
+                // byte 4: command type: 0x81 = SYSTEM_COMMAND_NO_REPLY.
+                // byte 5: System Command: 0x9E = WRITEMAILBOX.
+                // byte 6: length of mailbox name including null termination character.
+                // byte 7..n: mailbox name.
+                // byte n+1: null termination character: '\0'.
+                // byte n+2,n+3: length of message little endian (LSB on lowest address so on byte n+2).
+                // byte n+4..n+8: message containing 4 bytes representing a IEEE 754 single-precision binary floating-point.
+                // This format is used by the EV3 when the mailbox receives a numerical value.
+                copyArray(byteArray, new byte[] { 0x00, 0x00, 0x00, 0x00, 0x81, 0x9E, 0x00 }, 0);
+                copyArray(byteArray, Encoding.ASCII.GetBytes(mbox), 7);
+                copyArray(byteArray, new byte[] { (byte) '\0' }, 7 + mbox.Length);
+                copyArray(byteArray, BitConverter.GetBytes(msg), 7 + mbox.Length + 3); // 4 byte IEEE 754 single-precision binary floating-point
+                byteArray[0] = (byte) (len - 2);  // length of array excluding the two length bytes
+                byteArray[6] = (byte) (mbox.Length + 1);  // length of mailbox name
+                byteArray[7 + mbox.Length + 1] = 4;  // length of message
+                Send(tcpSocket, byteArray);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
+        }
+
+        // Receive message from EV3.
+        public String ReceiveMessage(String project, String mbox)
+        {
+            try
+            {
+                // Retrieve the response string.
+                String tmpResponse = response;
+                response = "";  // lear response to indicate it is handled
+                // Initiate the next message retrieval from the EV3.
+                startReceiveMessage(project, mbox);
+                return tmpResponse;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+                return "";
+            }
+        }
+
         // Callback method for receicing TCP data.
         private void ReceiveCallback(IAsyncResult ar)
         {
@@ -268,7 +303,7 @@ namespace EV3WifiLib
                 {
                     // state.buffer[0..255] now contain the Direct Command reply bytes.
                     // See the EV3 Direct Command documentation for the definition of the bytes.
-                    // byte 0..1: length bytes little endian (LSB on lowest adress so on byte 0).
+                    // byte 0..1: length bytes little endian (LSB on lowest address so on byte 0).
                     // byte 2..3: message counter, not used.
                     // byte 4: reply type: 0x00 =  DIRECT_COMMAND_REPLY.
                     // byte 5..n: reponse buffer which are the global variables reserved in the Direct Command.
@@ -377,7 +412,7 @@ namespace EV3WifiLib
                 byteArray = new byte[len];
                 // See https://siouxnetontrack.wordpress.com/2014/08/19/sending-data-over-wifi-between-our-pc-application-and-the-ev3-part-1/
                 // and the EV3 Direct Command documentation for the definition of the bytes.
-                // byte 0..1: length bytes little endian (LSB on lowest adress so on byte 0).
+                // byte 0..1: length bytes little endian (LSB on lowest address so on byte 0).
                 // byte 2..3: message counter, not used, set to 0x00.
                 // byte 4: command type: 0x00 = DIRECT_COMMAND_REPLY.
                 // byte 5..6: number of globals and locals reserved: 0xFB = 251 global variables, to come to a reply of 256 bytes..
@@ -400,8 +435,8 @@ namespace EV3WifiLib
                 // byte n+12: parameter to CLOSE: location of file handle = 0x60.
                 copyArray(byteArray, new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0xFB, 0x00, 0xC0, 0x01, 0x84 }, 0);
                 copyArray(byteArray, Encoding.ASCII.GetBytes(fileName), 10);
-                copyArray(byteArray, new byte[] { (byte)'\0', 0x60, 0x64, 0xC0, 0x05, 0x60, 0x00, 0xF0, 0x68, 0xC0, 0x07, 0x60 }, 10 + fileName.Length);
-                byteArray[0] = (byte)(len - 2);  // length of array excluding the two length bytes
+                copyArray(byteArray, new byte[] { (byte) '\0', 0x60, 0x64, 0xC0, 0x05, 0x60, 0x00, 0xF0, 0x68, 0xC0, 0x07, 0x60 }, 10 + fileName.Length);
+                byteArray[0] = (byte) (len - 2);  // length of array excluding the two length bytes
                 Send(tcpSocket, byteArray);
                 /*
                 for (int i = 0; i < byteArray.Length; i++)
