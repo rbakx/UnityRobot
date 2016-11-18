@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Net;
 using System.Text;
 using System.Threading;
@@ -273,7 +273,7 @@ namespace EV3WifiLib
             {
                 // Retrieve the response string.
                 String tmpResponse = response;
-                response = "";  // lear response to indicate it is handled
+                response = "";  // clear response to indicate it is handled
                 // Initiate the next message retrieval from the EV3.
                 startReceiveMessage(project, mbox);
                 return tmpResponse;
