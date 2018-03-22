@@ -29,14 +29,22 @@ public class ReneB_script1 : MonoBehaviour {
 	private Rigidbody rb;
 	private EV3Wifi myEV3;
 	private String strDistance = "";
+	private String strAngle = "";
 	private long ms, msPrevious = 0;
 	private float moveHorizontal, moveVertical = 0f;
 
 	void Start() {
 		rb = GetComponent<Rigidbody>();
 		myEV3 = new EV3Wifi();
-		String status = myEV3.Connect();
-		Debug.Log ("Connection status: " + status);
+		string ipAddress = "192.168.43.119";
+		if (myEV3.Connect ("1234", ipAddress) == true)
+		{
+			Debug.Log ("Connection succeeded");
+		}
+		else
+		{
+			Debug.Log ("Connection failed");
+		}
 	}
 
 	void Update () {
@@ -49,17 +57,25 @@ public class ReneB_script1 : MonoBehaviour {
 			moveHorizontal = Input.GetAxis ("Horizontal");
 			moveVertical = Input.GetAxis ("Vertical");
 			if (moveHorizontal > 0) {
-				myEV3.SendMessage("forward", "MOVE");
+				myEV3.SendMessage("Forward", "0");
 			}
 			else if (moveHorizontal < 0) {
-				myEV3.SendMessage("backward", "MOVE");
+				myEV3.SendMessage ("Backward", "0");
 			}
 
-			myEV3.SendMessage("get_distance", "STATUS");
-			// Calling ReceiveMessage is non -blocking. It will retrieve the previous message and initiate a new message retrieval.
-			strDistance = myEV3.ReceiveMessage("EV3Wifi", "DISTANCE");
-			// do what you'd like with `message` here:
-			Debug.Log("Distance: " + strDistance + "hi");
+			string strMessage = myEV3.ReceiveMessage("EV3_OUTBOX0");
+			if (strMessage != "")
+			{
+				string[] data = strMessage.Split(' ');
+				if (data.Length == 2)
+				{
+					strDistance = data[0];
+					strAngle = data[1];
+				}
+			}
+
+
+			Debug.Log("Distance: " + strDistance);
 			float distance;
 			if (float.TryParse (strDistance, out distance)) {
 				moveHorizontal = (distance - 50) / 1;
@@ -71,7 +87,7 @@ public class ReneB_script1 : MonoBehaviour {
 				// Limit speed to [-100, 100] interval.
 				speed = Math.Max(-100, speed);
 				speed = Math.Min(100, speed);
-				myEV3.SendMessage(speed, "SPEED");
+				myEV3.SendMessage("Speed " + speed.ToString(), "0");
 			}
 			msPrevious = ms;
 		}

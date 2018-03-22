@@ -1,7 +1,7 @@
+﻿
 Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual Studio 2008
-
-Project("{682A997E-E86F-AF54-F5E3-EB4506FD06B1}") = "EV3Unity", "Assembly-CSharp.csproj", "{5C78B04E-A756-9366-7C5A-6D75FAC253EF}"
+# Visual Studio 2010
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EV3Unity", "Assembly-CSharp.csproj", "{5C78B04E-A756-9366-7C5A-6D75FAC253EF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

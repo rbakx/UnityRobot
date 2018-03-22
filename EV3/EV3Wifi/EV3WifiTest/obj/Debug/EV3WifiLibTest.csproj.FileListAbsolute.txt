@@ -1,5 +1,0 @@
-C:\Users\reneb\documents\visual studio 2015\Projects\UnityEV3\UnityEV3\bin\Debug\UnityEV3.exe.config
-C:\Users\reneb\documents\visual studio 2015\Projects\UnityEV3\UnityEV3\bin\Debug\UnityEV3.exe
-C:\Users\reneb\documents\visual studio 2015\Projects\UnityEV3\UnityEV3\bin\Debug\UnityEV3.pdb
-C:\Users\reneb\documents\visual studio 2015\Projects\UnityEV3\UnityEV3\obj\Debug\UnityEV3.exe
-C:\Users\reneb\documents\visual studio 2015\Projects\UnityEV3\UnityEV3\obj\Debug\UnityEV3.pdb
