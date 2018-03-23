@@ -4,7 +4,6 @@
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/obj/Debug/Assembly-CSharp.dll.mdb
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEditor.dll
-/Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/EV3WifiLib.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/Assembly-UnityScript-firstpass.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.UI.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.Networking.dll
@@ -15,6 +14,7 @@
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.GoogleAudioSpatializer.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.HoloLens.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.SpatialTracking.dll
+/Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/EV3WifiLib.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.Advertisements.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.Analytics.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.Purchasing.dll

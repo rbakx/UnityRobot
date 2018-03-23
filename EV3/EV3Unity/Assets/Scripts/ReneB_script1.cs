@@ -4,6 +4,7 @@ using System;
 using System.Net;
 using System.Text;
 using System.Threading;
+using UnityEditor;
 using EV3WifiLib;
 
 
@@ -24,27 +25,18 @@ using EV3WifiLib;
 // after sending a request can take a while, depending on the server implementation on the robot.
 
 public class ReneB_script1 : MonoBehaviour {
-
-	public float speed;
 	private Rigidbody rb;
-	private EV3Wifi myEV3;
+	private ConfigurationWindow cw;
 	private String strDistance = "";
 	private String strAngle = "";
+	private float speed;
 	private long ms, msPrevious = 0;
 	private float moveHorizontal, moveVertical = 0f;
 
 	void Start() {
+		cw = new ConfigurationWindow ();
+		cw.ShowWindow ();
 		rb = GetComponent<Rigidbody>();
-		myEV3 = new EV3Wifi();
-		string ipAddress = "192.168.43.119";
-		if (myEV3.Connect ("1234", ipAddress) == true)
-		{
-			Debug.Log ("Connection succeeded");
-		}
-		else
-		{
-			Debug.Log ("Connection failed");
-		}
 	}
 
 	void Update () {
@@ -57,13 +49,13 @@ public class ReneB_script1 : MonoBehaviour {
 			moveHorizontal = Input.GetAxis ("Horizontal");
 			moveVertical = Input.GetAxis ("Vertical");
 			if (moveHorizontal > 0) {
-				myEV3.SendMessage("Forward", "0");
+				cw.myEV3.SendMessage("Forward", "0");
 			}
 			else if (moveHorizontal < 0) {
-				myEV3.SendMessage ("Backward", "0");
+				cw.myEV3.SendMessage ("Backward", "0");
 			}
 
-			string strMessage = myEV3.ReceiveMessage("EV3_OUTBOX0");
+			string strMessage = cw.myEV3.ReceiveMessage("EV3_OUTBOX0");
 			if (strMessage != "")
 			{
 				string[] data = strMessage.Split(' ');
@@ -75,7 +67,7 @@ public class ReneB_script1 : MonoBehaviour {
 			}
 
 
-			Debug.Log("Distance: " + strDistance);
+			//Debug.Log("Distance: " + strDistance);
 			float distance;
 			if (float.TryParse (strDistance, out distance)) {
 				moveHorizontal = (distance - 50) / 1;
@@ -87,9 +79,44 @@ public class ReneB_script1 : MonoBehaviour {
 				// Limit speed to [-100, 100] interval.
 				speed = Math.Max(-100, speed);
 				speed = Math.Min(100, speed);
-				myEV3.SendMessage("Speed " + speed.ToString(), "0");
+				cw.myEV3.SendMessage("Speed " + speed.ToString(), "0");
 			}
 			msPrevious = ms;
+		}
+	}
+
+}
+
+
+public class ConfigurationWindow : EditorWindow {
+	public EV3Wifi myEV3;
+	[MenuItem ("Window/Configuration Window")]
+
+	public void  ShowWindow () {
+		EditorWindow.GetWindow(typeof(ConfigurationWindow));
+		myEV3 = new EV3Wifi ();
+	}
+
+	void OnGUI () {
+		// The actual window code goes here
+		string ipAddress = "IP address";
+		ipAddress = EditorGUILayout.TextField("fill in", ipAddress);
+
+		if (GUILayout.Button("Connect"))
+		{
+			if (myEV3.Connect ("1234", ipAddress) == true)
+			{
+				Debug.Log ("Connection succeeded");
+			}
+			else
+			{
+				Debug.Log ("Connection failed");
+			}
+		}
+
+		if (GUILayout.Button("Disconnect"))
+		{
+
 		}
 	}
 }
