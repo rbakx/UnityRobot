@@ -36,6 +36,7 @@ task main()
 	openMailboxIn("EV3_INBOX0");
 	openMailboxOut("EV3_OUTBOX0");
 
+	resetMotorEncoder(motorB);
 	while (true)
 	{
 		// Read input message.
@@ -81,7 +82,8 @@ task main()
 
 		float dist = getUSDistance(S4);
 		float angle = getGyroDegrees(S2);
-		sprintf(msgBufOut, "%.1f %.1f", dist, angle);
+		int encoder = getMotorEncoder(motorB);
+		sprintf(msgBufOut, "%.1f %.1f %d", dist, angle, encoder);
 		writeMailboxOut("EV3_OUTBOX0", msgBufOut);
 		delay(100);  // Wait 100 ms to give host computer time to react.
 	}

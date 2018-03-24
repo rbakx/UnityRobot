@@ -25,98 +25,86 @@ using EV3WifiLib;
 // after sending a request can take a while, depending on the server implementation on the robot.
 
 public class ReneB_script1 : MonoBehaviour {
+	private EV3Wifi myEV3;
+	private string ipAddress = "IP address";
 	private Rigidbody rb;
-	private ConfigurationWindow cw;
 	private String strDistance = "";
 	private String strAngle = "";
+	private string strEncoder = "";
 	private float speed;
 	private long ms, msPrevious = 0;
 	private float moveHorizontal, moveVertical = 0f;
 
 	void Start() {
-		cw = new ConfigurationWindow ();
-		cw.ShowWindow ();
 		rb = GetComponent<Rigidbody>();
+		myEV3 = new EV3Wifi();
 	}
 
 	void Update () {
 	
 	}
 
-	void FixedUpdate () {			
+	void FixedUpdate () {
+		if (myEV3.isConnected == false) {
+			return;
+		}
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
-		if (ms - msPrevious > 100) {
+		if (ms - msPrevious > 100) {;
 			moveHorizontal = Input.GetAxis ("Horizontal");
 			moveVertical = Input.GetAxis ("Vertical");
+			Input.ResetInputAxes(); // To prevent double input.
 			if (moveHorizontal > 0) {
-				cw.myEV3.SendMessage("Forward", "0");
+				myEV3.SendMessage("Forward", "0");
 			}
 			else if (moveHorizontal < 0) {
-				cw.myEV3.SendMessage ("Backward", "0");
+				myEV3.SendMessage ("Backward", "0");
 			}
 
-			string strMessage = cw.myEV3.ReceiveMessage("EV3_OUTBOX0");
+			string strMessage = myEV3.ReceiveMessage("EV3_OUTBOX0");
 			if (strMessage != "")
 			{
 				string[] data = strMessage.Split(' ');
-				if (data.Length == 2)
+				if (data.Length == 3)
 				{
 					strDistance = data[0];
 					strAngle = data[1];
+					strEncoder = data[2];
 				}
 			}
 
 
 			//Debug.Log("Distance: " + strDistance);
 			float distance;
-			if (float.TryParse (strDistance, out distance)) {
-				moveHorizontal = (distance - 50) / 1;
-				moveVertical = 0;
-				Vector3 position = new Vector3((distance - 50)/10, (float) 0.1, 0);
+			int encoder;
+			if (int.TryParse (strEncoder, out encoder)) {
+				Vector3 position = new Vector3(encoder/100, (float) 0.1, 0);
 				rb.MovePosition (position);
-
-				float speed = (float) ((distance - 50.0) * 2);
-				// Limit speed to [-100, 100] interval.
-				speed = Math.Max(-100, speed);
-				speed = Math.Min(100, speed);
-				cw.myEV3.SendMessage("Speed " + speed.ToString(), "0");
 			}
 			msPrevious = ms;
 		}
 	}
 
-}
-
-
-public class ConfigurationWindow : EditorWindow {
-	public EV3Wifi myEV3;
-	[MenuItem ("Window/Configuration Window")]
-
-	public void  ShowWindow () {
-		EditorWindow.GetWindow(typeof(ConfigurationWindow));
-		myEV3 = new EV3Wifi ();
-	}
-
-	void OnGUI () {
-		// The actual window code goes here
-		string ipAddress = "IP address";
-		ipAddress = EditorGUILayout.TextField("fill in", ipAddress);
-
-		if (GUILayout.Button("Connect"))
-		{
-			if (myEV3.Connect ("1234", ipAddress) == true)
-			{
-				Debug.Log ("Connection succeeded");
+	void OnGUI()
+	{
+		ipAddress = GUILayout.TextField(ipAddress);
+		GUIStyle style = new GUIStyle ();
+		if (myEV3.isConnected == false) {
+			style.normal.textColor = Color.red;
+			if (GUILayout.Button ("Connect", style)) {
+				if (myEV3.Connect ("1234", ipAddress) == true) {
+					Debug.Log ("Connection succeeded");
+				} else {
+					Debug.Log ("Connection failed");
+				}
 			}
-			else
-			{
-				Debug.Log ("Connection failed");
+		} else {
+			style.normal.textColor = Color.green;
+			if (GUILayout.Button ("Disconnect", style)) {
+				myEV3.Disconnect ();
 			}
 		}
 
-		if (GUILayout.Button("Disconnect"))
-		{
 
-		}
 	}
+
 }
