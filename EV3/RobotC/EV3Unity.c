@@ -1,8 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 // ROBOTC EV3 remote control demonstration program.
 // This program receives messages from the host computer: Forward, Backward, Left and Right.
-// It sends back the distance in cm measured by the ultrasonic sensor and the angle in degrees
-// measured by the gyro sensor.
+// It sends back some semsor values.
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -37,10 +36,12 @@ task main()
 	openMailboxOut("EV3_OUTBOX0");
 
 	resetMotorEncoder(motorB);
+	resetMotorEncoder(motorC);
+	resetGyro(S2);
 	while (true)
 	{
 		// Read input message.
-	  // readMailboxIn() is non-blocking and returns "" if there is no message.
+		// readMailboxIn() is non-blocking and returns "" if there is no message.
 		readMailboxIn("EV3_INBOX0", msgBufIn);
 		if (strcmp(msgBufIn, "") != 0)
 		{
@@ -48,25 +49,21 @@ task main()
 			{
 				displayBigTextLine(4, msgBufIn);
 				setMotorSyncTime(motorB, motorC, 0, 500, 50);
-				waitUntilMotorStop(motorB);
 			}
 			else if (strcmp(msgBufIn, "Backward") == 0)
 			{
 				displayBigTextLine(4, msgBufIn);
 				setMotorSyncTime(motorB, motorC, 0, 500, -50);
-				waitUntilMotorStop(motorB);
 			}
 			else if (strcmp(msgBufIn, "Left") == 0)
 			{
 				displayBigTextLine(4, msgBufIn);
 				setMotorSyncTime(motorB, motorC, 100, 200, 50);
-				waitUntilMotorStop(motorB);
 			}
 			else if (strcmp(msgBufIn, "Right") == 0)
 			{
 				displayBigTextLine(4, msgBufIn);
 				setMotorSyncTime(motorB, motorC, -100, 200, 50);
-				waitUntilMotorStop(motorB);
 			}
 			else if (strncmp(msgBufIn, "Speed", 5) == 0)
 			{
@@ -82,8 +79,9 @@ task main()
 
 		float dist = getUSDistance(S4);
 		float angle = getGyroDegrees(S2);
-		int encoder = getMotorEncoder(motorB);
-		sprintf(msgBufOut, "%.1f %.1f %d", dist, angle, encoder);
+		int encoderB = getMotorEncoder(motorB);
+		int encoderC = getMotorEncoder(motorC);
+		sprintf(msgBufOut, "%.1f %.1f %d %d", dist, angle, encoderB, encoderC);
 		writeMailboxOut("EV3_OUTBOX0", msgBufOut);
 		delay(100);  // Wait 100 ms to give host computer time to react.
 	}

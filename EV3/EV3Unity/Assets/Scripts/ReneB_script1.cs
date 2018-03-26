@@ -8,16 +8,11 @@ using UnityEditor;
 using EV3WifiLib;
 
 
-// Example script which serves as a proof of concept of a robot controlled from Unity.
-// The robot has an ultrasonic sensor which provides distance data.
-// Unity reads this data and calculates the desired robot behavior.
-// This behaviour is then translated into move commands sent back to te robot.
-// In this simple example, the desired behavior is that the robot keeps a constant
-// distance of 50 cm to a wall. In Unity the robot is represented by a car.
-// This cars keeps a contant distance to the wall and it can also be controlled
-// in the x direction using the 'A' and 'D' keys.
-// The communication between Unity and the robot is done though UDP sockets.
-// Th robot runs a socket server and Unity a socket client, meaning the robot listens
+// Example script which serves as a proof of concept of the EV3 robot controlled from Unity, represented by a car object.
+// In this simple example, the EV3 can be controlled using the WASD keys or the arrow keys.
+// It sends back sensor information from the gyro and motor encoders which is used to move the car object.
+// The communication between Unity and the robot is done with EV3WifiLib.
+// The robot runs a TCP socket server and Unity a socket client, meaning the robot listens
 // to a specific port and Unity initiates the action by sending a request to this port.
 // Sending from Unity is done synchrounously as only short messages are sent and the call
 // only blocks until the data is sent, regardless whether or not the endpoint exists.
@@ -30,10 +25,19 @@ public class ReneB_script1 : MonoBehaviour {
 	private Rigidbody rb;
 	private String strDistance = "";
 	private String strAngle = "";
-	private string strEncoder = "";
+	private string strEncoderB = "";
+	private string strEncoderC = "";
 	private float speed;
 	private long ms, msPrevious = 0;
 	private float moveHorizontal, moveVertical = 0f;
+	private float distance = 0.0f;
+	private float angle = 0.0f;
+	private float encoderB = 0.0f;
+	private float encoderC = 0.0f;
+	private float encoderBPrevious = 0.0f;
+	private float encoderCPrevious = 0.0f;
+	private float anglePrevious = 0.0f;
+	private bool calibrated = false;
 
 	void Start() {
 		rb = GetComponent<Rigidbody>();
@@ -49,14 +53,20 @@ public class ReneB_script1 : MonoBehaviour {
 			return;
 		}
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
-		if (ms - msPrevious > 100) {;
+		if (ms - msPrevious > 100) {
 			moveHorizontal = Input.GetAxis ("Horizontal");
 			moveVertical = Input.GetAxis ("Vertical");
 			Input.ResetInputAxes(); // To prevent double input.
 			if (moveHorizontal > 0) {
-				myEV3.SendMessage("Forward", "0");
+				myEV3.SendMessage("Right", "0");
 			}
 			else if (moveHorizontal < 0) {
+				myEV3.SendMessage ("Left", "0");
+			}
+			else if (moveVertical > 0) {
+				myEV3.SendMessage ("Forward", "0");
+			}
+			else if (moveVertical < 0) {
 				myEV3.SendMessage ("Backward", "0");
 			}
 
@@ -64,21 +74,29 @@ public class ReneB_script1 : MonoBehaviour {
 			if (strMessage != "")
 			{
 				string[] data = strMessage.Split(' ');
-				if (data.Length == 3)
+				if (data.Length == 4)
 				{
 					strDistance = data[0];
 					strAngle = data[1];
-					strEncoder = data[2];
+					strEncoderB = data[2];
+					strEncoderC = data[3];
 				}
 			}
-
-
-			//Debug.Log("Distance: " + strDistance);
-			float distance;
-			int encoder;
-			if (int.TryParse (strEncoder, out encoder)) {
-				Vector3 position = new Vector3(encoder/100, (float) 0.1, 0);
-				rb.MovePosition (position);
+				
+			if (float.TryParse (strAngle, out angle) && float.TryParse (strEncoderB, out encoderB) && float.TryParse (strEncoderC, out encoderC)) {
+				float encoderBDelta = encoderB - encoderBPrevious;
+				float encoderCDelta = encoderC - encoderCPrevious;
+				float angleDelta = angle - anglePrevious;
+				encoderBPrevious = encoderB;
+				encoderCPrevious = encoderC;
+				anglePrevious = angle; 
+				if (calibrated) {
+					Quaternion rot = Quaternion.Euler (0, angleDelta, 0);
+					//rb.MoveRotation (rot);
+					rb.MoveRotation (rb.rotation * rot);
+					rb.MovePosition (transform.position + ((encoderBDelta + encoderCDelta) / 200.0f) * transform.forward);
+				}
+				calibrated = true;
 			}
 			msPrevious = ms;
 		}
