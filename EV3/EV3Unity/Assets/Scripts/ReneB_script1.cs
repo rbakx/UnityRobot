@@ -20,13 +20,13 @@ using EV3WifiLib;
 // after sending a request can take a while, depending on the server implementation on the robot.
 
 public class ReneB_script1 : MonoBehaviour {
-	private EV3Wifi myEV3;
+	private EV3WifiOrSimulation myEV3;
 	private string ipAddress = "IP address";
 	private Rigidbody rb;
-	private String strDistance = "0.0";
-	private String strAngle = "0.0";
-	private string strEncoderB = "0.0";
-	private string strEncoderC = "0.0";
+	private String strDistance;
+	private String strAngle;
+	private string strEncoderB;
+	private string strEncoderC;
 	private float speed;
 	private long ms, msPrevious = 0;
 	private float moveHorizontal, moveVertical = 0f;
@@ -38,11 +38,10 @@ public class ReneB_script1 : MonoBehaviour {
 	private float encoderCPrevious = 0.0f;
 	private float anglePrevious = 0.0f;
 	private bool calibrated = false;
-	private bool simulateOnly = true;
 
 	void Start() {
 		rb = GetComponent<Rigidbody>();
-		myEV3 = new EV3Wifi();
+		myEV3 = new EV3WifiOrSimulation ();
 	}
 
 	void Update () {
@@ -50,62 +49,25 @@ public class ReneB_script1 : MonoBehaviour {
 	}
 
 	void FixedUpdate () {
-		string strMessage = "";
-
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
 		if (ms - msPrevious > 100) {
 			moveHorizontal = Input.GetAxis ("Horizontal");
 			moveVertical = Input.GetAxis ("Vertical");
 			Input.ResetInputAxes(); // To prevent double input.
 			if (moveHorizontal > 0) {
-				if (!simulateOnly) {
-					myEV3.SendMessage ("Right", "0");
-				} else {
-					float simAngle;
-					if (float.TryParse (strAngle, out simAngle)) {
-						strAngle = (simAngle + 30.0f).ToString ();
-					}
-				}
+				myEV3.SendMessage ("Right", "0");
 			}
 			else if (moveHorizontal < 0) {
-				if (!simulateOnly) {
-					myEV3.SendMessage ("Left", "0");
-				} else {
-					float simAngle;
-					if (float.TryParse (strAngle, out simAngle)) {
-						strAngle = (simAngle - 30.0f).ToString ();
-					}
-				}
-
+				myEV3.SendMessage ("Left", "0");
 			}
 			else if (moveVertical > 0) {
-				if (!simulateOnly) {
-					myEV3.SendMessage ("Forward", "0");
-				} else {
-					float simEncoderB, simEncoderC;
-					if (float.TryParse (strEncoderB, out simEncoderB) && float.TryParse (strEncoderC, out simEncoderC)) {
-						strEncoderB = (simEncoderB + 20.0f).ToString ();
-						strEncoderC = (simEncoderC + 20.0f).ToString ();
-					}
-				}
+				myEV3.SendMessage ("Forward", "0");
 			}
 			else if (moveVertical < 0) {
-				if (!simulateOnly) {
-					myEV3.SendMessage ("Backward", "0");
-				} else {
-					float simEncoderB, simEncoderC;
-					if (float.TryParse (strEncoderB, out simEncoderB) && float.TryParse (strEncoderC, out simEncoderC)) {
-						strEncoderB = (simEncoderB - 20.0f).ToString ();
-						strEncoderC = (simEncoderC - 20.0f).ToString ();
-					}
-				}
+				myEV3.SendMessage ("Backward", "0");
 			}
-
-			if (!simulateOnly) {
-				strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
-			} else {
-				strMessage = strDistance + " " + strAngle + " " + strEncoderB + " " + strEncoderC;
-			}
+				
+			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
 			
 			if (strMessage != "")
 			{
@@ -139,34 +101,127 @@ public class ReneB_script1 : MonoBehaviour {
 
 	void OnGUI()
 	{
-		ipAddress = GUILayout.TextField(ipAddress);
-		GUIStyle style = new GUIStyle ();
+		GUIStyle styleTextField = new GUIStyle (GUI.skin.textField);
+		styleTextField.fontSize = 24;
+		ipAddress = GUILayout.TextField(ipAddress, styleTextField);
+		GUIStyle styleButton = new GUIStyle (GUI.skin.button);
+		styleButton.fontSize = 24;
 		if (myEV3.isConnected == false) {
-			style.normal.textColor = Color.red;
-			if (GUILayout.Button ("Connect", style)) {
+			styleButton.normal.textColor = Color.red;
+			if (GUILayout.Button ("Connect", styleButton, GUILayout.Width(200), GUILayout.Height(50))) {
+				myEV3.simOnly = false;
 				if (myEV3.Connect ("1234", ipAddress) == true) {
-					// Read message because first message might be invalid.
-					string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
+					// Read the first message after a physical connection is made because the first message might be invalid.
 					Debug.Log ("Connection succeeded");
-					simulateOnly = false;
-					// Set calibrated to false right after a new connection to make sure calibration is done first.
+					myEV3.ReceiveMessage ("EV3_OUTBOX0");
+					// Set calibrated to false right after a switch from simulation to physical or vice versa to prevent jumping of position.
 					calibrated = false;
 				} else {
 					Debug.Log ("Connection failed");
+					myEV3.simOnly = true;
 				}
 			}
 		} else {
-			style.normal.textColor = Color.green;
-			if (GUILayout.Button ("Disconnect", style)) {
+			styleButton.normal.textColor = Color.green;
+			if (GUILayout.Button ("Disconnect", styleButton, GUILayout.Width(200), GUILayout.Height(50))) {
 				myEV3.Disconnect ();
-				simulateOnly = true;
+				myEV3.simOnly = true;
+				// Set calibrated to false right after a switch from simulation to physical or vice versa to prevent jumping of position.
+				calibrated = false;
+
 			}
 		}
-		if (simulateOnly) {
-			GUILayout.Label ("simulation mode");
+		GUIStyle styleLabel = new GUIStyle (GUI.skin.label);
+		styleLabel.fontSize = 24;
+		if (myEV3.simOnly) {
+			GUILayout.Label ("Simulation mode", styleLabel);
 		} else {
-			GUILayout.Label ("physical mode");
+			GUILayout.Label ("Physical mode", styleLabel);
 		}
 	}
 
+}
+
+
+public class EV3WifiOrSimulation
+{
+	public bool simOnly = true;
+	public bool isConnected = false;
+	private EV3Wifi myEV3;
+	private float distance = 0.0f;
+	private float angle = 0.0f;
+	private float encoderB = 0.0f;
+	private float encoderC = 0.0f;
+
+	public EV3WifiOrSimulation()
+	{
+		myEV3 = new EV3Wifi ();
+	}
+
+	public bool Connect(string serialNumber, string IPadddress)
+	{
+		if (simOnly) {
+			return ConnectSim(serialNumber, IPadddress);
+		} else {
+			isConnected = myEV3.Connect(serialNumber, IPadddress);
+			return isConnected;
+		}
+	}
+
+	public void Disconnect()
+	{
+		if (simOnly) {
+			DisconnectSim();
+		} else {
+			myEV3.Disconnect();
+			isConnected = false;
+		}
+	}
+
+	public void SendMessage(string msg, string mbox)
+	{
+		if (simOnly) {
+			SendMessageSim(msg, mbox);
+		} else {
+			myEV3.SendMessage(msg, mbox);
+		}
+	}
+
+	public string ReceiveMessage(string mbox)
+	{
+		if (simOnly) {
+			return ReceiveMessageSim(mbox);
+		} else {
+			return myEV3.ReceiveMessage(mbox);
+		}
+	}
+
+	private bool ConnectSim(string serialNumber, string IPadddress)
+	{
+		return true;
+	}
+
+	private void DisconnectSim()
+	{
+	}
+
+	private void SendMessageSim(string msg, string mbox)
+	{
+		if (msg == "Forward") {
+			encoderB = encoderB + 100.0f;
+			encoderC = encoderC + 100.0f;
+		} else if (msg == "Backward") {
+			encoderB = encoderB - 100.0f;
+			encoderC = encoderC - 100.0f;
+		} else if (msg == "Left") {
+			angle = angle - 30.0f;
+		} else if (msg == "Right") {
+			angle = angle + 30.0f;
+		}
+	}
+
+	private string ReceiveMessageSim(string mbox)
+	{
+		return distance.ToString () + " " + angle.ToString () + " " + encoderB.ToString () + " " + encoderC.ToString ();
+	}
 }
