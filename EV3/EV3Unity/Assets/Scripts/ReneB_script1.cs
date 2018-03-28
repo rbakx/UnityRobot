@@ -38,6 +38,8 @@ public class ReneB_script1 : MonoBehaviour {
 	private float encoderCPrevious = 0.0f;
 	private float anglePrevious = 0.0f;
 	private bool calibrated = false;
+	private bool guiConnect = false;
+	private bool guiDisconnect = false;
 
 	void Start() {
 		rb = GetComponent<Rigidbody>();
@@ -49,6 +51,24 @@ public class ReneB_script1 : MonoBehaviour {
 	}
 
 	void FixedUpdate () {
+		// We connect / disconnect with the EV3 in this thread (and not in the GUI thread) because the EV3 SendMessage and ReceiveMessage also happen in this thread.
+		if (guiConnect) {
+			if (myEV3.Connect ("1234", ipAddress) == true) {
+				Debug.Log ("Connection succeeded");
+				// Set calibrated to false right after a switch from simulation to physical or vice versa to prevent jumping of position.
+				calibrated = false;
+			} else {
+				Debug.Log ("Connection failed");
+			}
+			// Indicate connection request is handled.
+			guiConnect = false;
+		} else if (guiDisconnect) {
+			myEV3.Disconnect ();
+			// Set calibrated to false right after a switch from simulation to physical or vice versa to prevent jumping of position.
+			calibrated = false;
+			// Indicate disconnection request is handled.
+			guiDisconnect = false;
+		}
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
 		if (ms - msPrevious > 100) {
 			moveHorizontal = Input.GetAxis ("Horizontal");
@@ -68,32 +88,31 @@ public class ReneB_script1 : MonoBehaviour {
 			}
 				
 			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
-			
-			if (strMessage != "")
-			{
-				string[] data = strMessage.Split(' ');
-				if (data.Length == 4)
-				{
-					strDistance = data[0];
-					strAngle = data[1];
-					strEncoderB = data[2];
-					strEncoderC = data[3];
+
+			// Check if the message is valid. The first message received after connecting with the EV3 is "Accept:EV340"
+			// indicating that the connection has been established. This is not a valid message.
+			if (strMessage != "") {
+				string[] data = strMessage.Split (' ');
+				if (data.Length == 4) {
+					strDistance = data [0];
+					strAngle = data [1];
+					strEncoderB = data [2];
+					strEncoderC = data [3];
+					if (float.TryParse (strAngle, out angle) && float.TryParse (strEncoderB, out encoderB) && float.TryParse (strEncoderC, out encoderC)) {
+						float encoderBDelta = encoderB - encoderBPrevious;
+						float encoderCDelta = encoderC - encoderCPrevious;
+						float angleDelta = angle - anglePrevious;
+						encoderBPrevious = encoderB;
+						encoderCPrevious = encoderC;
+						anglePrevious = angle; 
+						if (calibrated) {
+							Quaternion rot = Quaternion.Euler (0, angleDelta, 0);
+							rb.MoveRotation (rb.rotation * rot);
+							rb.MovePosition (transform.position + ((encoderBDelta + encoderCDelta) / 200.0f) * transform.forward);
+						}
+						calibrated = true;
+					}
 				}
-			}
-				
-			if (float.TryParse (strAngle, out angle) && float.TryParse (strEncoderB, out encoderB) && float.TryParse (strEncoderC, out encoderC)) {
-				float encoderBDelta = encoderB - encoderBPrevious;
-				float encoderCDelta = encoderC - encoderCPrevious;
-				float angleDelta = angle - anglePrevious;
-				encoderBPrevious = encoderB;
-				encoderCPrevious = encoderC;
-				anglePrevious = angle; 
-				if (calibrated) {
-					Quaternion rot = Quaternion.Euler (0, angleDelta, 0);
-					rb.MoveRotation (rb.rotation * rot);
-					rb.MovePosition (transform.position + ((encoderBDelta + encoderCDelta) / 200.0f) * transform.forward);
-				}
-				calibrated = true;
 			}
 			msPrevious = ms;
 		}
@@ -109,26 +128,12 @@ public class ReneB_script1 : MonoBehaviour {
 		if (myEV3.isConnected == false) {
 			styleButton.normal.textColor = Color.red;
 			if (GUILayout.Button ("Connect", styleButton, GUILayout.Width(200), GUILayout.Height(50))) {
-				myEV3.simOnly = false;
-				if (myEV3.Connect ("1234", ipAddress) == true) {
-					// Read the first message after a physical connection is made because the first message might be invalid.
-					Debug.Log ("Connection succeeded");
-					myEV3.ReceiveMessage ("EV3_OUTBOX0");
-					// Set calibrated to false right after a switch from simulation to physical or vice versa to prevent jumping of position.
-					calibrated = false;
-				} else {
-					Debug.Log ("Connection failed");
-					myEV3.simOnly = true;
-				}
+				guiConnect = true;
 			}
 		} else {
 			styleButton.normal.textColor = Color.green;
 			if (GUILayout.Button ("Disconnect", styleButton, GUILayout.Width(200), GUILayout.Height(50))) {
-				myEV3.Disconnect ();
-				myEV3.simOnly = true;
-				// Set calibrated to false right after a switch from simulation to physical or vice versa to prevent jumping of position.
-				calibrated = false;
-
+				guiDisconnect = true;
 			}
 		}
 		GUIStyle styleLabel = new GUIStyle (GUI.skin.label);
@@ -160,22 +165,16 @@ public class EV3WifiOrSimulation
 
 	public bool Connect(string serialNumber, string IPadddress)
 	{
-		if (simOnly) {
-			return ConnectSim(serialNumber, IPadddress);
-		} else {
-			isConnected = myEV3.Connect(serialNumber, IPadddress);
-			return isConnected;
-		}
+		isConnected = myEV3.Connect(serialNumber, IPadddress);
+		simOnly = !isConnected;
+		return isConnected;
 	}
 
 	public void Disconnect()
 	{
-		if (simOnly) {
-			DisconnectSim();
-		} else {
-			myEV3.Disconnect();
-			isConnected = false;
-		}
+		myEV3.Disconnect();
+		isConnected = false;
+		simOnly = true;
 	}
 
 	public void SendMessage(string msg, string mbox)
