@@ -74,17 +74,17 @@ public class ReneB_script1 : MonoBehaviour {
 			moveHorizontal = Input.GetAxis ("Horizontal");
 			moveVertical = Input.GetAxis ("Vertical");
 			Input.ResetInputAxes(); // To prevent double input.
-			if (moveHorizontal > 0) {
-				myEV3.SendMessage ("Right", "0");
+			if (moveHorizontal > 0) {		// Right
+				myEV3.SendMessage ("Turn 30 15", "0");
 			}
-			else if (moveHorizontal < 0) {
-				myEV3.SendMessage ("Left", "0");
+			else if (moveHorizontal < 0) {	// Left
+				myEV3.SendMessage ("Turn 30 -15", "0");
 			}
-			else if (moveVertical > 0) {
-				myEV3.SendMessage ("Forward", "0");
+			else if (moveVertical > 0) {	// Forward
+				myEV3.SendMessage ("Drive 30 0 5", "0");
 			}
-			else if (moveVertical < 0) {
-				myEV3.SendMessage ("Backward", "0");
+			else if (moveVertical < 0) {	// Backward
+				myEV3.SendMessage ("Drive -30 0 5", "0");
 			}
 				
 			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
@@ -206,16 +206,20 @@ public class EV3WifiOrSimulation
 
 	private void SendMessageSim(string msg, string mbox)
 	{
-		if (msg == "Forward") {
-			encoderB = encoderB + 100.0f;
-			encoderC = encoderC + 100.0f;
-		} else if (msg == "Backward") {
-			encoderB = encoderB - 100.0f;
-			encoderC = encoderC - 100.0f;
-		} else if (msg == "Left") {
-			angle = angle - 30.0f;
-		} else if (msg == "Right") {
-			angle = angle + 30.0f;
+		float speed, direction, distance, angleDelta;
+		string[] data = msg.Split (' ');
+		if (data [0] == "Drive") {
+			if (float.TryParse (data [1], out speed) && float.TryParse (data [2], out direction) && float.TryParse (data [3], out distance)) {
+				float distanceDegrees = distance * 360.0f / 17.6f;
+				if (direction == 0) {
+					encoderB = encoderB + distanceDegrees * (speed > 0 ? 1.0f : -1.0f);
+					encoderC = encoderC + distanceDegrees * (speed > 0 ? 1.0f : -1.0f);
+				}
+			}
+		} else if (data [0] == "Turn") {
+			if (float.TryParse (data [1], out speed) && float.TryParse (data [2], out angleDelta)) {
+				angle = angle + angleDelta;
+			}
 		}
 	}
 

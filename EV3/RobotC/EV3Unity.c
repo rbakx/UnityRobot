@@ -31,6 +31,7 @@ task main()
 
 	char msgBufIn[MAX_MSG_LENGTH];  // To contain the incoming message.
 	char msgBufOut[MAX_MSG_LENGTH];  // To contain the outgoing message
+	float speed, direction, distance, angle;
 
 	openMailboxIn("EV3_INBOX0");
 	openMailboxOut("EV3_OUTBOX0");
@@ -45,36 +46,47 @@ task main()
 		readMailboxIn("EV3_INBOX0", msgBufIn);
 		if (strcmp(msgBufIn, "") != 0)
 		{
-			if (strcmp(msgBufIn, "Forward") == 0)
+			displayBigTextLine(4, msgBufIn);
+			if (strncmp(msgBufIn, "Drive", strlen("Drive")) == 0)
 			{
-				displayBigTextLine(4, msgBufIn);
-				setMotorSyncTime(motorB, motorC, 0, 500, 50);
+				sscanf(msgBufIn, "Drive %f %f %f", &speed, &direction, &distance);
+				if (distance > 0.0)
+				{
+					setMotorSyncEncoder(motorB, motorC, direction, (distance / 17.6) * 360.0, speed);
+				}
+				else
+				{
+					setMotorSync(motorB, motorC, direction, speed);
+				}
 			}
-			else if (strcmp(msgBufIn, "Backward") == 0)
+			else if (strncmp(msgBufIn, "Turn", strlen("Turn")) == 0)
 			{
-				displayBigTextLine(4, msgBufIn);
-				setMotorSyncTime(motorB, motorC, 0, 500, -50);
-			}
-			else if (strcmp(msgBufIn, "Left") == 0)
-			{
-				displayBigTextLine(4, msgBufIn);
-				setMotorSyncTime(motorB, motorC, 100, 200, 50);
-			}
-			else if (strcmp(msgBufIn, "Right") == 0)
-			{
-				displayBigTextLine(4, msgBufIn);
-				setMotorSyncTime(motorB, motorC, -100, 200, 50);
-			}
-			else if (strncmp(msgBufIn, "Speed", 5) == 0)
-			{
-				displayBigTextLine(4, msgBufIn);
-				int speed = atoi(&msgBufIn[6]);
-				setMotorSync(motorB, motorC, 0, speed);
+				float angleMeasured = getGyroDegrees(S2);
+				sscanf(msgBufIn, "Turn %f %f", &speed, &angle);
+				float angleTarget = angleMeasured + angle;
+				if (angle > 0) // Right turn.
+				{
+					setMotorSync(motorB, motorC, -100, speed);
+					while(angleMeasured < angleTarget)
+					{
+						angleMeasured = getGyroDegrees(S2);
+					}
+				}
+				else if (angle < 0) // Left turn.
+				{
+					setMotorSync(motorB, motorC, 100, speed);
+					while(angleMeasured > angleTarget)
+					{
+						angleMeasured = getGyroDegrees(S2);
+					}
+				}
+				// Stop turning.
+				setMotorSync(motorB, motorC, 0, 0);
 			}
 		}
 		else
 		{
-			displayBigTextLine(4, "empty message!");
+			//displayBigTextLine(4, "empty message!");
 		}
 
 		float dist = getUSDistance(S4);
