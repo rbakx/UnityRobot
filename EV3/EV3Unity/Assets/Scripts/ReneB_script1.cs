@@ -11,6 +11,7 @@ using EV3WifiLib;
 // Example script which serves as a proof of concept of the EV3 robot controlled from Unity, represented by a car object.
 // In this simple example, the EV3 can be controlled using the WASD keys or the arrow keys.
 // It sends back sensor information from the gyro and motor encoders which is used to move the car object.
+// The scaling is such that one scale unit in Unity corresponds to 1 cm in the physical world.
 // The communication between Unity and the robot is done with EV3WifiLib.
 // The robot runs a TCP socket server and Unity a socket client, meaning the robot listens
 // to a specific port and Unity initiates the action by sending a request to this port.
@@ -23,20 +24,16 @@ public class ReneB_script1 : MonoBehaviour {
 	private EV3WifiOrSimulation myEV3;
 	private string ipAddress = "IP address";
 	private Rigidbody rb;
-	private String strDistance;
-	private String strAngle;
-	private string strEncoderB;
-	private string strEncoderC;
-	private float speed;
+	private string strDistanceMoved;
+	private String strDegreesTurned;
+	private String strDistanceToObject;
+	private float distanceMoved = 0.0f;
+	private float degreesTurned = 0.0f;
+	private float distanceToObject = 0.0f;
+	private float distanceMovedPrevious = 0.0f;
+	private float degreesTurnedPrevious = 0.0f;
 	private long ms, msPrevious = 0;
 	private float moveHorizontal, moveVertical = 0f;
-	private float distance = 0.0f;
-	private float angle = 0.0f;
-	private float encoderB = 0.0f;
-	private float encoderC = 0.0f;
-	private float encoderBPrevious = 0.0f;
-	private float encoderCPrevious = 0.0f;
-	private float anglePrevious = 0.0f;
 	private bool calibrated = false;
 	private bool guiConnect = false;
 	private bool guiDisconnect = false;
@@ -74,17 +71,17 @@ public class ReneB_script1 : MonoBehaviour {
 			moveHorizontal = Input.GetAxis ("Horizontal");
 			moveVertical = Input.GetAxis ("Vertical");
 			Input.ResetInputAxes(); // To prevent double input.
-			if (moveHorizontal > 0) {		// Right
-				myEV3.SendMessage ("Turn 30 15", "0");
-			}
-			else if (moveHorizontal < 0) {	// Left
-				myEV3.SendMessage ("Turn 30 -15", "0");
-			}
-			else if (moveVertical > 0) {	// Forward
-				myEV3.SendMessage ("Drive 30 0 5", "0");
+			if (moveVertical > 0) {			// Forward
+				myEV3.SendMessage ("Move 30 0 10", "0");	// Move power (-100..100) direction (-100..100) distance (cm)
 			}
 			else if (moveVertical < 0) {	// Backward
-				myEV3.SendMessage ("Drive -30 0 5", "0");
+				myEV3.SendMessage ("Move -30 0 10", "0");	// Move power (-100..100) direction (-100..100) distance (cm)
+			}
+			else if (moveHorizontal < 0) {	// Left
+				myEV3.SendMessage ("Turn 30 -15", "0");		// Turn power (-100..100) degrees
+			}
+			else if (moveHorizontal > 0) {	// Right
+				myEV3.SendMessage ("Turn 30 15", "0");		// Turn power (-100..100) degrees
 			}
 				
 			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
@@ -93,22 +90,19 @@ public class ReneB_script1 : MonoBehaviour {
 			// indicating that the connection has been established. This is not a valid message.
 			if (strMessage != "") {
 				string[] data = strMessage.Split (' ');
-				if (data.Length == 4) {
-					strDistance = data [0];
-					strAngle = data [1];
-					strEncoderB = data [2];
-					strEncoderC = data [3];
-					if (float.TryParse (strAngle, out angle) && float.TryParse (strEncoderB, out encoderB) && float.TryParse (strEncoderC, out encoderC)) {
-						float encoderBDelta = encoderB - encoderBPrevious;
-						float encoderCDelta = encoderC - encoderCPrevious;
-						float angleDelta = angle - anglePrevious;
-						encoderBPrevious = encoderB;
-						encoderCPrevious = encoderC;
-						anglePrevious = angle; 
+				if (data.Length == 3) {
+					strDistanceMoved = data [0];
+					strDegreesTurned = data [1];
+					strDistanceToObject = data [2];
+					if (float.TryParse (strDistanceMoved, out distanceMoved) && float.TryParse (strDegreesTurned, out degreesTurned) && float.TryParse (strDistanceToObject, out distanceToObject)) {
+						float distanceMovedDelta = distanceMoved - distanceMovedPrevious;
+						float degreesTurnedDelta = degreesTurned - degreesTurnedPrevious;
+						distanceMovedPrevious = distanceMoved;
+						degreesTurnedPrevious = degreesTurned;
 						if (calibrated) {
-							Quaternion rot = Quaternion.Euler (0, angleDelta, 0);
+							Quaternion rot = Quaternion.Euler (0, degreesTurnedDelta, 0);
 							rb.MoveRotation (rb.rotation * rot);
-							rb.MovePosition (transform.position + ((encoderBDelta + encoderCDelta) / 200.0f) * transform.forward);
+							rb.MovePosition (transform.position + distanceMovedDelta * transform.forward);
 						}
 						calibrated = true;
 					}
@@ -153,10 +147,9 @@ public class EV3WifiOrSimulation
 	public bool simOnly = true;
 	public bool isConnected = false;
 	private EV3Wifi myEV3;
-	private float distance = 0.0f;
-	private float angle = 0.0f;
-	private float encoderB = 0.0f;
-	private float encoderC = 0.0f;
+	private float distanceMoved = 0.0f;
+	private float degreesTurned = 0.0f;
+	private float distanceToObject = 0.0f;
 
 	public EV3WifiOrSimulation()
 	{
@@ -206,25 +199,23 @@ public class EV3WifiOrSimulation
 
 	private void SendMessageSim(string msg, string mbox)
 	{
-		float speed, direction, distance, angleDelta;
+		float pwr, direction, distanceToMove, degreesToTurn;
 		string[] data = msg.Split (' ');
-		if (data [0] == "Drive") {
-			if (float.TryParse (data [1], out speed) && float.TryParse (data [2], out direction) && float.TryParse (data [3], out distance)) {
-				float distanceDegrees = distance * 360.0f / 17.6f;
-				if (direction == 0) {
-					encoderB = encoderB + distanceDegrees * (speed > 0 ? 1.0f : -1.0f);
-					encoderC = encoderC + distanceDegrees * (speed > 0 ? 1.0f : -1.0f);
+		if (data [0] == "Move") {
+			if (float.TryParse (data [1], out pwr) && float.TryParse (data [2], out direction) && float.TryParse (data [3], out distanceToMove)) {
+				if (direction == 0) { 
+					distanceMoved = distanceMoved + distanceToMove * (pwr > 0 ? 1 : -1);
 				}
 			}
 		} else if (data [0] == "Turn") {
-			if (float.TryParse (data [1], out speed) && float.TryParse (data [2], out angleDelta)) {
-				angle = angle + angleDelta;
+			if (float.TryParse (data [1], out pwr) && float.TryParse (data [2], out degreesToTurn)) {
+				degreesTurned = degreesTurned + degreesToTurn;
 			}
 		}
 	}
 
 	private string ReceiveMessageSim(string mbox)
 	{
-		return distance.ToString () + " " + angle.ToString () + " " + encoderB.ToString () + " " + encoderC.ToString ();
+		return distanceMoved.ToString () + " " + degreesTurned.ToString () + " " + distanceToObject.ToString ();
 	}
 }
