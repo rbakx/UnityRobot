@@ -20,34 +20,44 @@ using EV3WifiLib;
 // Receiving from the robot is done asynchrounously as receiving data back from the robot
 // after sending a request can take a while, depending on the server implementation on the robot.
 
-public class ReneB_script1 : MonoBehaviour {
+
+static class Constants
+{
+	public const int TimeTickMs = 100;
+	// 100 ms
+	public const float PowerToDistancePerTimeTick = 0.5f * TimeTickMs / 1000.0f; // 0.5 cm per pwr per second, e.g. pwr = 30 -> 15 cm per second.
+	public const float PowerToAnglePerTimeTick = 3.0f * TimeTickMs / 1000.0f;    // 3 degrees per pwr per second, e.g. pwr = 30 -> 90 degrees per second.
+}
+
+
+public class ReneB_script1 : MonoBehaviour
+{
 	private EV3WifiOrSimulation myEV3;
 	private string ipAddress = "IP address";
 	private Rigidbody rb;
-	private string strDistanceMoved;
-	private String strDegreesTurned;
-	private String strDistanceToObject;
 	private float distanceMoved = 0.0f;
-	private float degreesTurned = 0.0f;
+	private float angleTurned = 0.0f;
 	private float distanceToObject = 0.0f;
 	private float distanceMovedPrevious = 0.0f;
-	private float degreesTurnedPrevious = 0.0f;
+	private float angleTurnedPrevious = 0.0f;
 	private long ms, msPrevious = 0;
-	private float moveHorizontal, moveVertical = 0f;
 	private bool calibrated = false;
 	private bool guiConnect = false;
 	private bool guiDisconnect = false;
 
-	void Start() {
-		rb = GetComponent<Rigidbody>();
+	void Start ()
+	{
+		rb = GetComponent<Rigidbody> ();
 		myEV3 = new EV3WifiOrSimulation ();
 	}
 
-	void Update () {
+	void Update ()
+	{
 	
 	}
 
-	void FixedUpdate () {
+	void FixedUpdate ()
+	{
 		// We connect / disconnect with the EV3 in this thread (and not in the GUI thread) because the EV3 SendMessage and ReceiveMessage also happen in this thread.
 		if (guiConnect) {
 			if (myEV3.Connect ("1234", ipAddress) == true) {
@@ -66,22 +76,34 @@ public class ReneB_script1 : MonoBehaviour {
 			// Indicate disconnection request is handled.
 			guiDisconnect = false;
 		}
+
+		// Read input keys, which has to be done once per FixedUpdate.
+		float moveHorizontal = Input.GetAxis ("Horizontal");
+		float moveVertical = Input.GetAxis ("Vertical");
+		bool fPressed = Input.GetKey (KeyCode.F);
+		bool bPressed = Input.GetKey (KeyCode.B);
+		// Get mouse position and convert to World coordinates.
+		Vector3 mPosition = Input.mousePosition;
+		mPosition.z = Camera.main.gameObject.transform.position.y;
+		mPosition = Camera.main.ScreenToWorldPoint (mPosition);
+		Debug.Log ("mouse position: " + mPosition.x.ToString () + " " + mPosition.y.ToString () + " " + mPosition.z.ToString ());
+
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
-		if (ms - msPrevious > 100) {
-			moveHorizontal = Input.GetAxis ("Horizontal");
-			moveVertical = Input.GetAxis ("Vertical");
-			Input.ResetInputAxes(); // To prevent double input.
+		if (ms - msPrevious > Constants.TimeTickMs) {
+			// Below code is executed once per TimeTickMs. This to limit communication to physical robot.ScreenToWorldPoint
+			Input.ResetInputAxes (); // To prevent double input.
 			if (moveVertical > 0) {			// Forward
 				myEV3.SendMessage ("Move 30 0 10", "0");	// Move power (-100..100) direction (-100..100) distance (cm)
-			}
-			else if (moveVertical < 0) {	// Backward
+			} else if (moveVertical < 0) {	// Backward
 				myEV3.SendMessage ("Move -30 0 10", "0");	// Move power (-100..100) direction (-100..100) distance (cm)
-			}
-			else if (moveHorizontal < 0) {	// Left
-				myEV3.SendMessage ("Turn 30 -15", "0");		// Turn power (-100..100) degrees
-			}
-			else if (moveHorizontal > 0) {	// Right
-				myEV3.SendMessage ("Turn 30 15", "0");		// Turn power (-100..100) degrees
+			} else if (moveHorizontal < 0) {	// Left
+				myEV3.SendMessage ("Turn 30 -15", "0");		// Turn power (-100..100) angle
+			} else if (moveHorizontal > 0) {	// Right
+				myEV3.SendMessage ("Turn 30 15", "0");		// Turn power (-100..100) angle
+			} else if (fPressed) {
+				myEV3.SendMessage ("Move 30 0 5000", "0");		// Move power (-100..100) direction (-100..100) distance (cm)
+			} else if (bPressed) {
+				myEV3.SendMessage ("Move -30 0 5000", "0");	// Move power (-100..100) direction (-100..100) distance (cm)
 			}
 				
 			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
@@ -91,16 +113,13 @@ public class ReneB_script1 : MonoBehaviour {
 			if (strMessage != "") {
 				string[] data = strMessage.Split (' ');
 				if (data.Length == 3) {
-					strDistanceMoved = data [0];
-					strDegreesTurned = data [1];
-					strDistanceToObject = data [2];
-					if (float.TryParse (strDistanceMoved, out distanceMoved) && float.TryParse (strDegreesTurned, out degreesTurned) && float.TryParse (strDistanceToObject, out distanceToObject)) {
+					if (float.TryParse (data [0], out distanceMoved) && float.TryParse (data [1], out angleTurned) && float.TryParse (data [2], out distanceToObject)) {
 						float distanceMovedDelta = distanceMoved - distanceMovedPrevious;
-						float degreesTurnedDelta = degreesTurned - degreesTurnedPrevious;
+						float angleTurnedDelta = angleTurned - angleTurnedPrevious;
 						distanceMovedPrevious = distanceMoved;
-						degreesTurnedPrevious = degreesTurned;
+						angleTurnedPrevious = angleTurned;
 						if (calibrated) {
-							Quaternion rot = Quaternion.Euler (0, degreesTurnedDelta, 0);
+							Quaternion rot = Quaternion.Euler (0, angleTurnedDelta, 0);
 							rb.MoveRotation (rb.rotation * rot);
 							rb.MovePosition (transform.position + distanceMovedDelta * transform.forward);
 						}
@@ -112,21 +131,21 @@ public class ReneB_script1 : MonoBehaviour {
 		}
 	}
 
-	void OnGUI()
+	void OnGUI ()
 	{
 		GUIStyle styleTextField = new GUIStyle (GUI.skin.textField);
 		styleTextField.fontSize = 24;
-		ipAddress = GUILayout.TextField(ipAddress, styleTextField);
+		ipAddress = GUILayout.TextField (ipAddress, styleTextField);
 		GUIStyle styleButton = new GUIStyle (GUI.skin.button);
 		styleButton.fontSize = 24;
 		if (myEV3.isConnected == false) {
 			styleButton.normal.textColor = Color.red;
-			if (GUILayout.Button ("Connect", styleButton, GUILayout.Width(200), GUILayout.Height(50))) {
+			if (GUILayout.Button ("Connect", styleButton, GUILayout.Width (200), GUILayout.Height (50))) {
 				guiConnect = true;
 			}
 		} else {
 			styleButton.normal.textColor = Color.green;
-			if (GUILayout.Button ("Disconnect", styleButton, GUILayout.Width(200), GUILayout.Height(50))) {
+			if (GUILayout.Button ("Disconnect", styleButton, GUILayout.Width (200), GUILayout.Height (50))) {
 				guiDisconnect = true;
 			}
 		}
@@ -147,75 +166,109 @@ public class EV3WifiOrSimulation
 	public bool simOnly = true;
 	public bool isConnected = false;
 	private EV3Wifi myEV3;
+	private bool newMessageArrived = false;
+	private string lastMessageSent = "";
 	private float distanceMoved = 0.0f;
-	private float degreesTurned = 0.0f;
+	private float angleTurned = 0.0f;
 	private float distanceToObject = 0.0f;
+	private float distanceToMoveRemaining = 0.0f;
+	private float angleToTurnRemaining = 0.0f;
 
-	public EV3WifiOrSimulation()
+	public EV3WifiOrSimulation ()
 	{
 		myEV3 = new EV3Wifi ();
 	}
 
-	public bool Connect(string serialNumber, string IPadddress)
+	public bool Connect (string serialNumber, string IPadddress)
 	{
-		isConnected = myEV3.Connect(serialNumber, IPadddress);
+		isConnected = myEV3.Connect (serialNumber, IPadddress);
 		simOnly = !isConnected;
 		return isConnected;
 	}
 
-	public void Disconnect()
+	public void Disconnect ()
 	{
-		myEV3.Disconnect();
+		myEV3.Disconnect ();
 		isConnected = false;
 		simOnly = true;
 	}
 
-	public void SendMessage(string msg, string mbox)
+	public void SendMessage (string msg, string mbox)
 	{
 		if (simOnly) {
-			SendMessageSim(msg, mbox);
+			SendMessageSim (msg, mbox);
 		} else {
-			myEV3.SendMessage(msg, mbox);
+			myEV3.SendMessage (msg, mbox);
 		}
 	}
 
-	public string ReceiveMessage(string mbox)
+	public string ReceiveMessage (string mbox)
 	{
 		if (simOnly) {
-			return ReceiveMessageSim(mbox);
+			return ReceiveMessageSim (mbox);
 		} else {
-			return myEV3.ReceiveMessage(mbox);
+			return myEV3.ReceiveMessage (mbox);
 		}
 	}
 
-	private bool ConnectSim(string serialNumber, string IPadddress)
+	private bool ConnectSim (string serialNumber, string IPadddress)
 	{
 		return true;
 	}
 
-	private void DisconnectSim()
+	private void DisconnectSim ()
 	{
 	}
 
-	private void SendMessageSim(string msg, string mbox)
+	private void SendMessageSim (string msg, string mbox)
 	{
-		float pwr, direction, distanceToMove, degreesToTurn;
-		string[] data = msg.Split (' ');
-		if (data [0] == "Move") {
-			if (float.TryParse (data [1], out pwr) && float.TryParse (data [2], out direction) && float.TryParse (data [3], out distanceToMove)) {
-				if (direction == 0) { 
-					distanceMoved = distanceMoved + distanceToMove * (pwr > 0 ? 1 : -1);
+		// Indicate new message has arrived.
+		newMessageArrived = true;
+		// Store msg in lastMessageSent so it can ve handled in ReceiveMessageSim to simulate robot movement.
+		lastMessageSent = msg;
+	}
+
+	private string ReceiveMessageSim (string mbox)
+	{
+		
+		float pwr, direction, distanceToMove, angleToTurn;
+		string[] messageStrings = lastMessageSent.Split (' ');
+		if (messageStrings [0] == "Move") {
+			if (float.TryParse (messageStrings [1], out pwr) && float.TryParse (messageStrings [2], out direction) && float.TryParse (messageStrings [3], out distanceToMove)) {
+				float distanceToMovePerTimeTick = pwr * (distanceToMove > 0 ? Constants.PowerToDistancePerTimeTick : -Constants.PowerToDistancePerTimeTick);
+				if (direction == 0) {
+					if (newMessageArrived) {
+						distanceToMoveRemaining = Math.Abs (distanceToMove) - Math.Abs (distanceToMovePerTimeTick);
+						newMessageArrived = false;
+					} else {
+						distanceToMoveRemaining = distanceToMoveRemaining - Math.Abs (distanceToMovePerTimeTick);
+					}
+					distanceMoved = distanceMoved + distanceToMovePerTimeTick;
+				}
+				if (distanceToMoveRemaining <= 0) {
+					// Last time tick for this move, make sure to move not more than distanceToMove.
+					distanceMoved = distanceMoved + (distanceToMovePerTimeTick > 0 ? distanceToMoveRemaining : -distanceToMoveRemaining);
+					lastMessageSent = ""; // Clear lastMessageSent to indicate turn is finished.
 				}
 			}
-		} else if (data [0] == "Turn") {
-			if (float.TryParse (data [1], out pwr) && float.TryParse (data [2], out degreesToTurn)) {
-				degreesTurned = degreesTurned + degreesToTurn;
+		} else if (messageStrings [0] == "Turn") {
+			if (float.TryParse (messageStrings [1], out pwr) && float.TryParse (messageStrings [2], out angleToTurn)) {
+				float angleToTurnPerTimeTick = pwr * (angleToTurn > 0 ? Constants.PowerToAnglePerTimeTick : -Constants.PowerToAnglePerTimeTick);
+				if (newMessageArrived) {
+					angleToTurnRemaining = Math.Abs (angleToTurn) - Math.Abs (angleToTurnPerTimeTick);
+					;
+					newMessageArrived = false;
+				} else {
+					angleToTurnRemaining = angleToTurnRemaining - Math.Abs (angleToTurnPerTimeTick);
+				}
+				angleTurned = angleTurned + angleToTurnPerTimeTick;
+				if (angleToTurnRemaining <= 0) {
+					// Last time tick for this turn, make sure to turn not more than angleToTurn.
+					angleTurned = angleTurned + (angleToTurnPerTimeTick > 0 ? angleToTurnRemaining : -angleToTurnRemaining);
+					lastMessageSent = ""; // Clear lastMessageSent to indicate turn is finished.
+				}
 			}
 		}
-	}
-
-	private string ReceiveMessageSim(string mbox)
-	{
-		return distanceMoved.ToString () + " " + degreesTurned.ToString () + " " + distanceToObject.ToString ();
+		return distanceMoved.ToString () + " " + angleTurned.ToString () + " " + distanceToObject.ToString ();
 	}
 }

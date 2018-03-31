@@ -24,8 +24,9 @@
 // Unfortunately ROBOTC cannot handle multipe C files so we have to include it.
 #include "EV3Mailbox.c"
 
-#define DEGREES_TO_CM_MULT_FACTOR 0.04889 // 17.6 / 360.0
-#define CM_TO_DEGREES_MULT_FACTOR 20.45 // 360.0 / 17.6
+#define ENCODER_TO_DISTANCE_MULT_FACTOR 0.04889 // 17.6 / 360.0
+#define DISTANCE_TO_ENCODER_MULT_FACTOR 20.45 // 360.0 / 17.6
+#define DEGREES_TO_ENCODER_MULT_FACTOR 2.8 // 1.5 * 360 encoder ticks for 360 degree turn.
 
 
 task main()
@@ -34,7 +35,7 @@ task main()
 
 	char msgBufIn[MAX_MSG_LENGTH];  // To contain the incoming message.
 	char msgBufOut[MAX_MSG_LENGTH];  // To contain the outgoing message
-	float pwr, direction, distanceToMove, degreesToTurn;
+	float pwr, direction, distanceToMove, angleToTurn;
 
 	openMailboxIn("EV3_INBOX0");
 	openMailboxOut("EV3_OUTBOX0");
@@ -53,42 +54,18 @@ task main()
 			if (strncmp(msgBufIn, "Move", strlen("Move")) == 0)
 			{
 				sscanf(msgBufIn, "Move %f %f %f", &pwr, &direction, &distanceToMove);
-				if (distanceToMove > 0.0)
-				{
-					setMotorSyncEncoder(motorB, motorC, direction, distanceToMove * CM_TO_DEGREES_MULT_FACTOR, pwr);
-				}
-				else if (distanceToMove < 0.0)
-				{
-					setMotorSyncEncoder(motorB, motorC, direction, distanceToMove * CM_TO_DEGREES_MULT_FACTOR, -pwr);
-				}
-				else
-				{
-					setMotorSync(motorB, motorC, direction, pwr);
-				}
+				setMotorSyncEncoder(motorB, motorC, direction, distanceToMove * DISTANCE_TO_ENCODER_MULT_FACTOR, pwr * sgn(distanceToMove));
 			}
 			else if (strncmp(msgBufIn, "Turn", strlen("Turn")) == 0)
 			{
-				float degreesMeasured = getGyroDegrees(S2);
-				sscanf(msgBufIn, "Turn %f %f", &pwr, &degreesToTurn);
-				float degreesTarget = degreesMeasured + degreesToTurn;
-				if (degreesToTurn > 0) // Right turn.
-				{
-					setMotorSync(motorB, motorC, -100, pwr);
-					while(degreesMeasured < degreesTarget)
-					{
-						degreesMeasured = getGyroDegrees(S2);
-					}
-				}
-				else if (degreesToTurn < 0) // Left turn.
-				{
-					setMotorSync(motorB, motorC, 100, pwr);
-					while(degreesMeasured > degreesTarget)
-					{
-						degreesMeasured = getGyroDegrees(S2);
-					}
-				}
-				// Stop turning.
-				setMotorSync(motorB, motorC, 0, 0);
+				// We use setMotorSyncEncoder also for turning so we do not need a blocking while loop
+				// to check the gyro angle.
+				sscanf(msgBufIn, "Turn %f %f", &pwr, &angleToTurn);
+				setMotorSyncEncoder(motorB, motorC, -100, angleToTurn * DEGREES_TO_ENCODER_MULT_FACTOR, pwr * sgn(angleToTurn));
+			}
+			else
+			{
+				displayBigTextLine(4, "invalid message!");
 			}
 		}
 		else
@@ -96,10 +73,10 @@ task main()
 			//displayBigTextLine(4, "empty message!");
 		}
 
-		float distanceMoved = (getMotorEncoder(motorB) + getMotorEncoder(motorC)) * DEGREES_TO_CM_MULT_FACTOR / 2.0;
-		float degreesTurned = getGyroDegrees(S2);
+		float distanceMoved = (getMotorEncoder(motorB) + getMotorEncoder(motorC)) * ENCODER_TO_DISTANCE_MULT_FACTOR / 2.0;
+		float angleTurned = getGyroDegrees(S2);
 		float distanceToObject = getUSDistance(S4);
-		sprintf(msgBufOut, "%.1f %.1f %.1f", distanceMoved, degreesTurned, distanceToObject);
+		sprintf(msgBufOut, "%.1f %.1f %.1f", distanceMoved, angleTurned, distanceToObject);
 		writeMailboxOut("EV3_OUTBOX0", msgBufOut);
 		delay(100);  // Wait 100 ms to give host computer time to react.
 	}
