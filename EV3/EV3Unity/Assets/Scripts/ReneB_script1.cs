@@ -25,8 +25,10 @@ static class Constants
 {
 	public const int TimeTickMs = 100;
 	// 100 ms
-	public const float PowerToDistancePerTimeTick = 0.5f * TimeTickMs / 1000.0f; // 0.5 cm per pwr per second, e.g. pwr = 30 -> 15 cm per second.
-	public const float PowerToAnglePerTimeTick = 3.0f * TimeTickMs / 1000.0f;    // 3 degrees per pwr per second, e.g. pwr = 30 -> 90 degrees per second.
+	public const float PowerToDistancePerTimeTick = 0.5f * TimeTickMs / 1000.0f;
+	// 0.5 cm per pwr per second, e.g. pwr = 30 -> 15 cm per second.
+	public const float PowerToAnglePerTimeTick = 3.0f * TimeTickMs / 1000.0f;
+	// 3 degrees per pwr per second, e.g. pwr = 30 -> 90 degrees per second.
 }
 
 
@@ -76,21 +78,29 @@ public class ReneB_script1 : MonoBehaviour
 			// Indicate disconnection request is handled.
 			guiDisconnect = false;
 		}
-
-		// Read input keys, which has to be done once per FixedUpdate.
-		float moveHorizontal = Input.GetAxis ("Horizontal");
-		float moveVertical = Input.GetAxis ("Vertical");
-		bool fPressed = Input.GetKey (KeyCode.F);
-		bool bPressed = Input.GetKey (KeyCode.B);
-		// Get mouse position and convert to World coordinates.
-		Vector3 mPosition = Input.mousePosition;
-		mPosition.z = Camera.main.gameObject.transform.position.y;
-		mPosition = Camera.main.ScreenToWorldPoint (mPosition);
-		Debug.Log ("mouse position: " + mPosition.x.ToString () + " " + mPosition.y.ToString () + " " + mPosition.z.ToString ());
-
+			
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
 		if (ms - msPrevious > Constants.TimeTickMs) {
 			// Below code is executed once per TimeTickMs. This to limit communication to physical robot.ScreenToWorldPoint
+
+			// Read input keys. Because we get here once in so many calls of FixedUpdate we have to use key events which last long enough.
+			float moveHorizontal = Input.GetAxis ("Horizontal");
+			float moveVertical = Input.GetAxis ("Vertical");
+			bool fPressed = Input.GetKey (KeyCode.F);
+			bool bPressed = Input.GetKey (KeyCode.B);
+			bool tPressed = Input.GetKey (KeyCode.T);
+			bool leftMouseButtonClicked = Input.GetMouseButton (0);
+			// Get mouse position and convert to World coordinates.
+			Vector3 mPosition = Input.mousePosition;
+			mPosition.z = Camera.main.gameObject.transform.position.y;
+			mPosition = Camera.main.ScreenToWorldPoint (mPosition);
+			//Debug.Log ("mouse position: " + mPosition.x.ToString () + " " + mPosition.y.ToString () + " " + mPosition.z.ToString ());
+
+			var targetObject = GameObject.Find ("Cylinder");
+			if (leftMouseButtonClicked) {
+				targetObject.transform.position = mPosition;
+			}
+								
 			Input.ResetInputAxes (); // To prevent double input.
 			if (moveVertical > 0) {			// Forward
 				myEV3.SendMessage ("Move 30 0 10", "0");	// Move power (-100..100) direction (-100..100) distance (cm)
@@ -101,11 +111,27 @@ public class ReneB_script1 : MonoBehaviour
 			} else if (moveHorizontal > 0) {	// Right
 				myEV3.SendMessage ("Turn 30 15", "0");		// Turn power (-100..100) angle
 			} else if (fPressed) {
-				myEV3.SendMessage ("Move 30 0 5000", "0");		// Move power (-100..100) direction (-100..100) distance (cm)
+				myEV3.SendMessage ("Move 30 0 5000", "0");	// Move power (-100..100) direction (-100..100) distance (cm)
 			} else if (bPressed) {
 				myEV3.SendMessage ("Move -30 0 5000", "0");	// Move power (-100..100) direction (-100..100) distance (cm)
+			} else if (tPressed) {
+				float targetDistance = Vector3.Distance (rb.transform.position, targetObject.transform.position);
+				//Debug.Log ("target distance: " + targetDistance.ToString ());
+
+				Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
+				Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
+				var relativePos = targetObject.transform.position - rb.transform.position;
+				var relativeRot = Quaternion.LookRotation (relativePos);
+				float targetAngle = Quaternion.Angle (transform.rotation, relativeRot);
+				float targetAnglePlus90 = Quaternion.Angle (transform.rotation * rotPlus90, relativeRot);
+				float targetAngleMin90 = Quaternion.Angle (transform.rotation * rotMin90, relativeRot);
+				targetAngle = targetAnglePlus90 < targetAngleMin90 ? targetAngle : -targetAngle;
+				//Debug.Log ("target rotation: " + targetAngle.ToString ());
+				//Debug.Log ("t pressed: " + targetAngle.ToString ());
+				myEV3.SendMessage ("Turn 30 " + targetAngle.ToString (), "0"); // Turn power (-100..100) angle
+				//myEV3.SendMessage ("Move 30 0 " + targetDistance.ToString(), "0");	// Move power (-100..100) direction (-100..100) distance (cm)
 			}
-				
+
 			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
 
 			// Check if the message is valid. The first message received after connecting with the EV3 is "Accept:EV340"
