@@ -38,14 +38,16 @@ public class ReneB_script1 : MonoBehaviour
 	private string ipAddress = "IP address";
 	private Rigidbody rb;
 	private float distanceMoved = 0.0f;
-	private float angleTurned = 0.0f;
+	private float angleMoved = 0.0f;
 	private float distanceToObject = 0.0f;
 	private float distanceMovedPrevious = 0.0f;
-	private float angleTurnedPrevious = 0.0f;
-	private long ms, msPrevious = 0;
+	private float angleMovedPrevious = 0.0f;
+	private long ms, msPrevious, msPreviousTask = 0;
 	private bool calibrated = false;
 	private bool guiConnect = false;
 	private bool guiDisconnect = false;
+	private int taskReady = 1;
+	// // To indicate robot is ready for the next task.
 
 	void Start ()
 	{
@@ -102,20 +104,20 @@ public class ReneB_script1 : MonoBehaviour
 								
 			Input.ResetInputAxes (); // To prevent double input.
 			if (moveVertical > 0) {			// Forward
-				myEV3.SendMessage ("Move 10 0 30", "0");	// Move distance (cm) angle (-180 .. 180) power (0..100)
+				myEV3.SendMessage ("Move 0 10 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
 			} else if (moveVertical < 0) {	// Backward
-				myEV3.SendMessage ("Move -10 0 30", "0");	// Move distance (cm) angle (-180 .. 180) power (0..100)
+				myEV3.SendMessage ("Move 0 -10 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
 			} else if (moveHorizontal < 0) {	// Left
-				myEV3.SendMessage ("Move 0 -15 30", "0");	// Move distance (cm) angle (-180 .. 180) power (0..100)
+				myEV3.SendMessage ("Move -15 0 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
 			} else if (moveHorizontal > 0) {	// Right
-				myEV3.SendMessage ("Move 0 15 30", "0");	// Move distance (cm) angle (-180 .. 180) power (0..100)
+				myEV3.SendMessage ("Move 15 0 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
 			} else if (fPressed) {
-				myEV3.SendMessage ("Move 5000 0 30", "0");	// Move distance (cm) angle (-180 .. 180) power (0..100)
+				myEV3.SendMessage ("Move 0 5000 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
 			} else if (bPressed) {
-				myEV3.SendMessage ("Move -5000 0 30", "0");	// Move distance (cm) angle (-180 .. 180) power (0..100)
+				myEV3.SendMessage ("Move 0 -5000 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
 			} else if (tPressed) {
+				// Execute task: Move to target object.
 				float targetDistance = Vector3.Distance (rb.transform.position, targetObject.transform.position);
-
 				Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
 				Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
 				var relativePos = targetObject.transform.position - rb.transform.position;
@@ -124,7 +126,8 @@ public class ReneB_script1 : MonoBehaviour
 				float targetAnglePlus90 = Quaternion.Angle (transform.rotation * rotPlus90, relativeRot);
 				float targetAngleMin90 = Quaternion.Angle (transform.rotation * rotMin90, relativeRot);
 				targetAngle = targetAnglePlus90 < targetAngleMin90 ? targetAngle : -targetAngle;
-				myEV3.SendMessage ("Move " + targetDistance.ToString () + " " + targetAngle.ToString () + " 30", "0"); // Move distance (cm) angle (-180 .. 180) power (0..100)
+				myEV3.SendMessage ("Move " + targetAngle.ToString () + " " + targetDistance.ToString () + " 30", "0"); // Move angle (-180 .. 180) distance (cm) power (0..100)
+				msPreviousTask = ms;
 			}
 
 			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
@@ -133,22 +136,28 @@ public class ReneB_script1 : MonoBehaviour
 			// indicating that the connection has been established. This is not a valid message.
 			if (strMessage != "") {
 				string[] data = strMessage.Split (' ');
-				if (data.Length == 3) {
-					if (float.TryParse (data [0], out distanceMoved) && float.TryParse (data [1], out angleTurned) && float.TryParse (data [2], out distanceToObject)) {
+				if (data.Length == 4) {
+					if (int.TryParse (data [0], out taskReady) && float.TryParse (data [1], out angleMoved) && float.TryParse (data [2], out distanceMoved) && float.TryParse (data [3], out distanceToObject)) {
+						// If a new task just has been sent to the robot, the taskReady will still be on '1'.
+						// It takes about 3 time ticks of 100 ms to receive taskReady = 0 back from the robot.
+						// Therefore we force taskReady to 0 for 5 time ticks after the task has been sent.
+						if (ms - msPreviousTask < 5 * Constants.TimeTickMs) {
+							taskReady = 0;
+						}
 						float distanceMovedDelta = distanceMoved - distanceMovedPrevious;
-						float angleTurnedDelta = angleTurned - angleTurnedPrevious;
+						float angleMovedDelta = angleMoved - angleMovedPrevious;
 						distanceMovedPrevious = distanceMoved;
-						angleTurnedPrevious = angleTurned;
+						angleMovedPrevious = angleMoved;
 						if (calibrated) {
-							Quaternion rot = Quaternion.Euler (0, angleTurnedDelta, 0);
+							Quaternion rot = Quaternion.Euler (0, angleMovedDelta, 0);
 							rb.MoveRotation (rb.rotation * rot);
 							rb.MovePosition (rb.transform.position + distanceMovedDelta * rb.transform.forward);
 						}
 						calibrated = true;
 
-						// Draw a wall in fron of the robot when an object is detected.
+						// Draw a wall in front of the robot when an object is detected.
 						var wallObject = GameObject.Find ("Wall");
-						MeshRenderer renderWall = wallObject.GetComponentInChildren<MeshRenderer>();
+						MeshRenderer renderWall = wallObject.GetComponentInChildren<MeshRenderer> ();
 						wallObject.transform.position = rb.transform.position;
 						wallObject.transform.rotation = rb.transform.rotation;
 						// Place the wall in front of the robot at distanceToObject units.
@@ -203,12 +212,14 @@ public class EV3WifiOrSimulation
 	private bool newMessageArrived = false;
 	private string lastMessageSent = "";
 	private float distanceMoved = 0.0f;
-	private float angleTurned = 0.0f;
+	private float angleMoved = 0.0f;
 	private float distanceToObject = 0.0f;
 	private float distanceToMoveRemaining = 0.0f;
-	private float angleToTurnRemaining = 0.0f;
-	float angleToTurnPerTimeTick, distanceToMovePerTimeTick;
-	float distanceToMove, angleToTurn, pwr;
+	private float angleToMoveRemaining = 0.0f;
+	float angleToMovePerTimeTick, distanceToMovePerTimeTick;
+	float angleToMove, distanceToMove, pwr;
+	int taskReady = 1;
+	// To indicate robot is ready for the next task
 
 	public EV3WifiOrSimulation ()
 	{
@@ -266,32 +277,33 @@ public class EV3WifiOrSimulation
 
 	// ReceiveMessageSim simulates receiving a message from the robot.
 	// It uses the message sent with SendMessageSim to determine the movement of the robot.
-	// This message contains a distanceToMove, angleToTurn and pwr.
-	// The simulated robot first turns by angleToTurn degrees and then moves straight for distanceToMove units with power pwr.
+	// This message contains a distanceToMove, angleToMove and pwr.
+	// The simulated robot first turns by angleToMove degrees and then moves straight for distanceToMove units with power pwr.
 	private string ReceiveMessageSim (string mbox)
 	{
 		if (newMessageArrived) {
 			string[] messageStrings = lastMessageSent.Split (' ');
-			if (messageStrings [0] == "Move" && float.TryParse (messageStrings [1], out distanceToMove) && float.TryParse (messageStrings [2], out angleToTurn) && float.TryParse (messageStrings [3], out pwr)) {
-				angleToTurnPerTimeTick = pwr * (angleToTurn > 0 ? Constants.PowerToAnglePerTimeTick : -Constants.PowerToAnglePerTimeTick);
+			if (messageStrings [0] == "Move" && float.TryParse (messageStrings [1], out angleToMove) && float.TryParse (messageStrings [2], out distanceToMove) && float.TryParse (messageStrings [3], out pwr)) {
+				angleToMovePerTimeTick = pwr * (angleToMove > 0 ? Constants.PowerToAnglePerTimeTick : -Constants.PowerToAnglePerTimeTick);
 				distanceToMovePerTimeTick = pwr * (distanceToMove > 0 ? Constants.PowerToDistancePerTimeTick : -Constants.PowerToDistancePerTimeTick);
-				angleToTurnRemaining = angleToTurn != 0 ? Math.Abs (angleToTurn) - Math.Abs (angleToTurnPerTimeTick) : 0;
+				angleToMoveRemaining = angleToMove != 0 ? Math.Abs (angleToMove) - Math.Abs (angleToMovePerTimeTick) : 0;
 				distanceToMoveRemaining = distanceToMove != 0 ? Math.Abs (distanceToMove) - Math.Abs (distanceToMovePerTimeTick) : 0;
 				newMessageArrived = false;
+				taskReady = 0; // Indicate robot is not ready for the next task.
 			}
-		} else if (angleToTurn != 0 || distanceToMove != 0) {
-			if (angleToTurnRemaining > 0) {
-				angleToTurnRemaining = angleToTurnRemaining - Math.Abs (angleToTurnPerTimeTick);
+		} else if (angleToMove != 0 || distanceToMove != 0) {
+			if (angleToMoveRemaining > 0) {
+				angleToMoveRemaining = angleToMoveRemaining - Math.Abs (angleToMovePerTimeTick);
 			} else if (distanceToMoveRemaining > 0) {
 				distanceToMoveRemaining = distanceToMoveRemaining - Math.Abs (distanceToMovePerTimeTick);
 			}
 		}
-		if (angleToTurn != 0) {				// First handle the turn.
-			angleTurned = angleTurned + angleToTurnPerTimeTick;
-			if (angleToTurnRemaining <= 0) {
-				// Last time tick for this turn, make sure to turn not more than angleToTurn.
-				angleTurned = angleTurned + (angleToTurnPerTimeTick > 0 ? angleToTurnRemaining : -angleToTurnRemaining);
-				angleToTurn = 0; // Indicate turning is done.
+		if (angleToMove != 0) {				// First handle the turn.
+			angleMoved = angleMoved + angleToMovePerTimeTick;
+			if (angleToMoveRemaining <= 0) {
+				// Last time tick for this turn, make sure to turn not more than angleToMove.
+				angleMoved = angleMoved + (angleToMovePerTimeTick > 0 ? angleToMoveRemaining : -angleToMoveRemaining);
+				angleToMove = 0; // Indicate turning is done.
 			}
 		} else if (distanceToMove != 0) {	// Then handle the move.
 			distanceMoved = distanceMoved + distanceToMovePerTimeTick;
@@ -300,7 +312,10 @@ public class EV3WifiOrSimulation
 				distanceMoved = distanceMoved + (distanceToMovePerTimeTick > 0 ? distanceToMoveRemaining : -distanceToMoveRemaining);
 				distanceToMove = 0; // Indicate moving is done.
 			}
+			
+		} else {
+			taskReady = 1; // Indicate robot is ready for the next task.
 		}
-		return distanceMoved.ToString () + " " + angleTurned.ToString () + " " + distanceToObject.ToString ();
+		return taskReady.ToString () + " " + angleMoved.ToString () + " " + distanceMoved.ToString () + " " + distanceToObject.ToString ();
 	}
 }

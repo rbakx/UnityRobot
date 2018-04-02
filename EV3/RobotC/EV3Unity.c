@@ -27,27 +27,42 @@
 #define ENCODER_TO_DISTANCE_MULT_FACTOR 0.04889 // 17.6 / 360.0
 #define DISTANCE_TO_ENCODER_MULT_FACTOR 20.45 // 360.0 / 17.6
 
+// Global variables
+char doMove_msgBufIn[MAX_MSG_LENGTH];  // To contain the incoming message for the doMove task.
+int taskReady; // To indicate EV3 is ready for the next task.
 
-// Task for turning using the gyro.
-char doMove_msgBufIn[MAX_MSG_LENGTH];  // To contain the incoming message for doTurn task.
+
+// Task for moving.
 task doMove()
 {
-	float distanceToMove, angleToTurn, pwr;
-	sscanf(doMove_msgBufIn, "Move %f %f %f", &distanceToMove, &angleToTurn, &pwr);
-	if (angleToTurn != 0)
+	float angleToMove, distanceToMove, pwr;
+	sscanf(doMove_msgBufIn, "Move %f %f %f", &angleToMove, &distanceToMove, &pwr);
+	taskReady = 0; // Indicate EV3 is not ready for the next task.
+	if (angleToMove != 0)
 	{
 		float angleMeasured = getGyroDegrees(S2);
-		float angleTarget = angleMeasured + angleToTurn;
-		setMotorSync(motorB, motorC, -100, pwr * sgn(angleToTurn));
-		// If angleToTurn is positive it is a right turn.
-		if (angleToTurn > 0) // Right turn.
+		// Determine a correction angle dependant of pwr to prevent overshoot while turning.
+		// This is the best we can do at the moment and empirically determined.
+		float angleCorrection = pwr / 3.0;
+		if (angleCorrection < abs(angleToMove))
+		{
+			angleToMove = angleToMove - sgn(angleToMove) * angleCorrection;
+		}
+		else // For small angles and high pwr the correction angle gets too large so just take a fraction of angleToMove.
+		{
+			angleToMove = angleToMove / 3.0;
+		}
+		float angleTarget = angleMeasured + angleToMove;
+		setMotorSync(motorB, motorC, -100, pwr * sgn(angleToMove));
+		// If angleToMove is positive it is a right turn.
+		if (angleToMove > 0) // Right turn.
 		{
 			while(angleMeasured < angleTarget)
 			{
 				angleMeasured = getGyroDegrees(S2);
 			}
 		}
-		// If angleToTurn is negative it is a left turn.
+		// If angleToMove is negative it is a left turn.
 		else // Left turn.
 		{
 			while(angleMeasured > angleTarget)
@@ -63,6 +78,7 @@ task doMove()
 		setMotorSyncEncoder(motorB, motorC, 0, distanceToMove * DISTANCE_TO_ENCODER_MULT_FACTOR, pwr * sgn(distanceToMove));
 		waitUntilMotorStop(motorB);
 	}
+	taskReady = 1; // Indicate EV3 is ready for the next task.
 }
 
 
@@ -80,6 +96,7 @@ task main()
 	resetMotorEncoder(motorB);
 	resetMotorEncoder(motorC);
 	resetGyro(S2);
+	taskReady = 1; // Indicate EV3 is ready for the next task.
 	while (true)
 	{
 		// Read input message.
@@ -104,10 +121,10 @@ task main()
 			//displayBigTextLine(4, "empty message!");
 		}
 
+		float angleMoved = getGyroDegrees(S2);
 		float distanceMoved = (getMotorEncoder(motorB) + getMotorEncoder(motorC)) * ENCODER_TO_DISTANCE_MULT_FACTOR / 2.0;
-		float angleTurned = getGyroDegrees(S2);
 		float distanceToObject = getUSDistance(S4);
-		sprintf(msgBufOut, "%.1f %.1f %.1f", distanceMoved, angleTurned, distanceToObject);
+		sprintf(msgBufOut, "%d %.1f %.1f %.1f", taskReady, angleMoved, distanceMoved, distanceToObject);
 		writeMailboxOut("EV3_OUTBOX0", msgBufOut);
 		delay(100);  // Wait 100 ms to give host computer time to react.
 	}
