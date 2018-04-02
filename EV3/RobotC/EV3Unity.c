@@ -26,16 +26,53 @@
 
 #define ENCODER_TO_DISTANCE_MULT_FACTOR 0.04889 // 17.6 / 360.0
 #define DISTANCE_TO_ENCODER_MULT_FACTOR 20.45 // 360.0 / 17.6
-#define DEGREES_TO_ENCODER_MULT_FACTOR 2.8 // 1.5 * 360 encoder ticks for 360 degree turn.
 
 
+// Task for turning using the gyro.
+char doMove_msgBufIn[MAX_MSG_LENGTH];  // To contain the incoming message for doTurn task.
+task doMove()
+{
+	float distanceToMove, angleToTurn, pwr;
+	sscanf(doMove_msgBufIn, "Move %f %f %f", &distanceToMove, &angleToTurn, &pwr);
+	if (angleToTurn != 0)
+	{
+		float angleMeasured = getGyroDegrees(S2);
+		float angleTarget = angleMeasured + angleToTurn;
+		setMotorSync(motorB, motorC, -100, pwr * sgn(angleToTurn));
+		// If angleToTurn is positive it is a right turn.
+		if (angleToTurn > 0) // Right turn.
+		{
+			while(angleMeasured < angleTarget)
+			{
+				angleMeasured = getGyroDegrees(S2);
+			}
+		}
+		// If angleToTurn is negative it is a left turn.
+		else // Left turn.
+		{
+			while(angleMeasured > angleTarget)
+			{
+				angleMeasured = getGyroDegrees(S2);
+			}
+		}
+		// Stop turning.
+		setMotorSync(motorB, motorC, 0, 0);
+	}
+	if (distanceToMove != 0)
+	{
+		setMotorSyncEncoder(motorB, motorC, 0, distanceToMove * DISTANCE_TO_ENCODER_MULT_FACTOR, pwr * sgn(distanceToMove));
+		waitUntilMotorStop(motorB);
+	}
+}
+
+
+// Main task
 task main()
 {
 	displayBigTextLine(0, "Started!");
 
 	char msgBufIn[MAX_MSG_LENGTH];  // To contain the incoming message.
 	char msgBufOut[MAX_MSG_LENGTH];  // To contain the outgoing message
-	float pwr, direction, distanceToMove, angleToTurn;
 
 	openMailboxIn("EV3_INBOX0");
 	openMailboxOut("EV3_OUTBOX0");
@@ -53,15 +90,9 @@ task main()
 			displayBigTextLine(4, msgBufIn);
 			if (strncmp(msgBufIn, "Move", strlen("Move")) == 0)
 			{
-				sscanf(msgBufIn, "Move %f %f %f", &pwr, &direction, &distanceToMove);
-				setMotorSyncEncoder(motorB, motorC, direction, distanceToMove * DISTANCE_TO_ENCODER_MULT_FACTOR, pwr * sgn(distanceToMove));
-			}
-			else if (strncmp(msgBufIn, "Turn", strlen("Turn")) == 0)
-			{
-				// We use setMotorSyncEncoder also for turning so we do not need a blocking while loop
-				// to check the gyro angle.
-				sscanf(msgBufIn, "Turn %f %f", &pwr, &angleToTurn);
-				setMotorSyncEncoder(motorB, motorC, -100, angleToTurn * DEGREES_TO_ENCODER_MULT_FACTOR, pwr * sgn(angleToTurn));
+				// Handle Move in a separate task, so that the main task can report the back the status in parallel.
+				strcpy(doMove_msgBufIn, msgBufIn); // Copy input message to input message for doTurn task.
+				startTask(doMove, kDefaultTaskPriority);
 			}
 			else
 			{

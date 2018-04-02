@@ -89,12 +89,11 @@ public class ReneB_script1 : MonoBehaviour
 			bool fPressed = Input.GetKey (KeyCode.F);
 			bool bPressed = Input.GetKey (KeyCode.B);
 			bool tPressed = Input.GetKey (KeyCode.T);
-			bool leftMouseButtonClicked = Input.GetMouseButton (0);
+			bool leftMouseButtonClicked = Input.GetMouseButton (1);
 			// Get mouse position and convert to World coordinates.
 			Vector3 mPosition = Input.mousePosition;
 			mPosition.z = Camera.main.gameObject.transform.position.y;
 			mPosition = Camera.main.ScreenToWorldPoint (mPosition);
-			//Debug.Log ("mouse position: " + mPosition.x.ToString () + " " + mPosition.y.ToString () + " " + mPosition.z.ToString ());
 
 			var targetObject = GameObject.Find ("Cylinder");
 			if (leftMouseButtonClicked) {
@@ -103,20 +102,19 @@ public class ReneB_script1 : MonoBehaviour
 								
 			Input.ResetInputAxes (); // To prevent double input.
 			if (moveVertical > 0) {			// Forward
-				myEV3.SendMessage ("Move 30 0 10", "0");	// Move power (-100..100) direction (-100..100) distance (cm)
+				myEV3.SendMessage ("Move 10 0 30", "0");	// Move distance (cm) angle (-180 .. 180) power (0..100)
 			} else if (moveVertical < 0) {	// Backward
-				myEV3.SendMessage ("Move -30 0 10", "0");	// Move power (-100..100) direction (-100..100) distance (cm)
+				myEV3.SendMessage ("Move -10 0 30", "0");	// Move distance (cm) angle (-180 .. 180) power (0..100)
 			} else if (moveHorizontal < 0) {	// Left
-				myEV3.SendMessage ("Turn 30 -15", "0");		// Turn power (-100..100) angle
+				myEV3.SendMessage ("Move 0 -15 30", "0");	// Move distance (cm) angle (-180 .. 180) power (0..100)
 			} else if (moveHorizontal > 0) {	// Right
-				myEV3.SendMessage ("Turn 30 15", "0");		// Turn power (-100..100) angle
+				myEV3.SendMessage ("Move 0 15 30", "0");	// Move distance (cm) angle (-180 .. 180) power (0..100)
 			} else if (fPressed) {
-				myEV3.SendMessage ("Move 30 0 5000", "0");	// Move power (-100..100) direction (-100..100) distance (cm)
+				myEV3.SendMessage ("Move 5000 0 30", "0");	// Move distance (cm) angle (-180 .. 180) power (0..100)
 			} else if (bPressed) {
-				myEV3.SendMessage ("Move -30 0 5000", "0");	// Move power (-100..100) direction (-100..100) distance (cm)
+				myEV3.SendMessage ("Move -5000 0 30", "0");	// Move distance (cm) angle (-180 .. 180) power (0..100)
 			} else if (tPressed) {
 				float targetDistance = Vector3.Distance (rb.transform.position, targetObject.transform.position);
-				//Debug.Log ("target distance: " + targetDistance.ToString ());
 
 				Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
 				Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
@@ -126,10 +124,7 @@ public class ReneB_script1 : MonoBehaviour
 				float targetAnglePlus90 = Quaternion.Angle (transform.rotation * rotPlus90, relativeRot);
 				float targetAngleMin90 = Quaternion.Angle (transform.rotation * rotMin90, relativeRot);
 				targetAngle = targetAnglePlus90 < targetAngleMin90 ? targetAngle : -targetAngle;
-				//Debug.Log ("target rotation: " + targetAngle.ToString ());
-				//Debug.Log ("t pressed: " + targetAngle.ToString ());
-				myEV3.SendMessage ("Turn 30 " + targetAngle.ToString (), "0"); // Turn power (-100..100) angle
-				//myEV3.SendMessage ("Move 30 0 " + targetDistance.ToString(), "0");	// Move power (-100..100) direction (-100..100) distance (cm)
+				myEV3.SendMessage ("Move " + targetDistance.ToString () + " " + targetAngle.ToString () + " 30", "0"); // Move distance (cm) angle (-180 .. 180) power (0..100)
 			}
 
 			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
@@ -147,9 +142,22 @@ public class ReneB_script1 : MonoBehaviour
 						if (calibrated) {
 							Quaternion rot = Quaternion.Euler (0, angleTurnedDelta, 0);
 							rb.MoveRotation (rb.rotation * rot);
-							rb.MovePosition (transform.position + distanceMovedDelta * transform.forward);
+							rb.MovePosition (rb.transform.position + distanceMovedDelta * rb.transform.forward);
 						}
 						calibrated = true;
+
+						// Draw a wall in fron of the robot when an object is detected.
+						var wallObject = GameObject.Find ("Wall");
+						MeshRenderer renderWall = wallObject.GetComponentInChildren<MeshRenderer>();
+						wallObject.transform.position = rb.transform.position;
+						wallObject.transform.rotation = rb.transform.rotation;
+						// Place the wall in front of the robot at distanceToObject units.
+						wallObject.transform.Translate (0, 0, distanceToObject + 10); // +10 to compensate for robot length.
+						if (distanceToObject > 0 && distanceToObject < 30) {
+							renderWall.enabled = true;
+						} else {
+							renderWall.enabled = false;
+						}
 					}
 				}
 			}
@@ -199,6 +207,8 @@ public class EV3WifiOrSimulation
 	private float distanceToObject = 0.0f;
 	private float distanceToMoveRemaining = 0.0f;
 	private float angleToTurnRemaining = 0.0f;
+	float angleToTurnPerTimeTick, distanceToMovePerTimeTick;
+	float distanceToMove, angleToTurn, pwr;
 
 	public EV3WifiOrSimulation ()
 	{
@@ -254,45 +264,41 @@ public class EV3WifiOrSimulation
 		lastMessageSent = msg;
 	}
 
+	// ReceiveMessageSim simulates receiving a message from the robot.
+	// It uses the message sent with SendMessageSim to determine the movement of the robot.
+	// This message contains a distanceToMove, angleToTurn and pwr.
+	// The simulated robot first turns by angleToTurn degrees and then moves straight for distanceToMove units with power pwr.
 	private string ReceiveMessageSim (string mbox)
 	{
-		
-		float pwr, direction, distanceToMove, angleToTurn;
-		string[] messageStrings = lastMessageSent.Split (' ');
-		if (messageStrings [0] == "Move") {
-			if (float.TryParse (messageStrings [1], out pwr) && float.TryParse (messageStrings [2], out direction) && float.TryParse (messageStrings [3], out distanceToMove)) {
-				float distanceToMovePerTimeTick = pwr * (distanceToMove > 0 ? Constants.PowerToDistancePerTimeTick : -Constants.PowerToDistancePerTimeTick);
-				if (direction == 0) {
-					if (newMessageArrived) {
-						distanceToMoveRemaining = Math.Abs (distanceToMove) - Math.Abs (distanceToMovePerTimeTick);
-						newMessageArrived = false;
-					} else {
-						distanceToMoveRemaining = distanceToMoveRemaining - Math.Abs (distanceToMovePerTimeTick);
-					}
-					distanceMoved = distanceMoved + distanceToMovePerTimeTick;
-				}
-				if (distanceToMoveRemaining <= 0) {
-					// Last time tick for this move, make sure to move not more than distanceToMove.
-					distanceMoved = distanceMoved + (distanceToMovePerTimeTick > 0 ? distanceToMoveRemaining : -distanceToMoveRemaining);
-					lastMessageSent = ""; // Clear lastMessageSent to indicate turn is finished.
-				}
+		if (newMessageArrived) {
+			string[] messageStrings = lastMessageSent.Split (' ');
+			if (messageStrings [0] == "Move" && float.TryParse (messageStrings [1], out distanceToMove) && float.TryParse (messageStrings [2], out angleToTurn) && float.TryParse (messageStrings [3], out pwr)) {
+				angleToTurnPerTimeTick = pwr * (angleToTurn > 0 ? Constants.PowerToAnglePerTimeTick : -Constants.PowerToAnglePerTimeTick);
+				distanceToMovePerTimeTick = pwr * (distanceToMove > 0 ? Constants.PowerToDistancePerTimeTick : -Constants.PowerToDistancePerTimeTick);
+				angleToTurnRemaining = angleToTurn != 0 ? Math.Abs (angleToTurn) - Math.Abs (angleToTurnPerTimeTick) : 0;
+				distanceToMoveRemaining = distanceToMove != 0 ? Math.Abs (distanceToMove) - Math.Abs (distanceToMovePerTimeTick) : 0;
+				newMessageArrived = false;
 			}
-		} else if (messageStrings [0] == "Turn") {
-			if (float.TryParse (messageStrings [1], out pwr) && float.TryParse (messageStrings [2], out angleToTurn)) {
-				float angleToTurnPerTimeTick = pwr * (angleToTurn > 0 ? Constants.PowerToAnglePerTimeTick : -Constants.PowerToAnglePerTimeTick);
-				if (newMessageArrived) {
-					angleToTurnRemaining = Math.Abs (angleToTurn) - Math.Abs (angleToTurnPerTimeTick);
-					;
-					newMessageArrived = false;
-				} else {
-					angleToTurnRemaining = angleToTurnRemaining - Math.Abs (angleToTurnPerTimeTick);
-				}
-				angleTurned = angleTurned + angleToTurnPerTimeTick;
-				if (angleToTurnRemaining <= 0) {
-					// Last time tick for this turn, make sure to turn not more than angleToTurn.
-					angleTurned = angleTurned + (angleToTurnPerTimeTick > 0 ? angleToTurnRemaining : -angleToTurnRemaining);
-					lastMessageSent = ""; // Clear lastMessageSent to indicate turn is finished.
-				}
+		} else if (angleToTurn != 0 || distanceToMove != 0) {
+			if (angleToTurnRemaining > 0) {
+				angleToTurnRemaining = angleToTurnRemaining - Math.Abs (angleToTurnPerTimeTick);
+			} else if (distanceToMoveRemaining > 0) {
+				distanceToMoveRemaining = distanceToMoveRemaining - Math.Abs (distanceToMovePerTimeTick);
+			}
+		}
+		if (angleToTurn != 0) {				// First handle the turn.
+			angleTurned = angleTurned + angleToTurnPerTimeTick;
+			if (angleToTurnRemaining <= 0) {
+				// Last time tick for this turn, make sure to turn not more than angleToTurn.
+				angleTurned = angleTurned + (angleToTurnPerTimeTick > 0 ? angleToTurnRemaining : -angleToTurnRemaining);
+				angleToTurn = 0; // Indicate turning is done.
+			}
+		} else if (distanceToMove != 0) {	// Then handle the move.
+			distanceMoved = distanceMoved + distanceToMovePerTimeTick;
+			if (distanceToMoveRemaining <= 0) {
+				// Last time tick for this move, make sure to move not more than distanceToMove.
+				distanceMoved = distanceMoved + (distanceToMovePerTimeTick > 0 ? distanceToMoveRemaining : -distanceToMoveRemaining);
+				distanceToMove = 0; // Indicate moving is done.
 			}
 		}
 		return distanceMoved.ToString () + " " + angleTurned.ToString () + " " + distanceToObject.ToString ();
