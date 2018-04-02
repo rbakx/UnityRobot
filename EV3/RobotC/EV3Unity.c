@@ -26,6 +26,7 @@
 
 #define ENCODER_TO_DISTANCE_MULT_FACTOR 0.04889 // 17.6 / 360.0
 #define DISTANCE_TO_ENCODER_MULT_FACTOR 20.45 // 360.0 / 17.6
+#define MINIMUM_TURNING_POWER 5.0 // Minimum turning power
 
 // Global variables
 char doMove_msgBufIn[MAX_MSG_LENGTH];  // To contain the incoming message for the doMove task.
@@ -36,39 +37,44 @@ int taskReady; // To indicate EV3 is ready for the next task.
 task doMove()
 {
 	float angleToMove, distanceToMove, pwr;
-	sscanf(doMove_msgBufIn, "Move %f %f %f", &angleToMove, &distanceToMove, &pwr);
 	taskReady = 0; // Indicate EV3 is not ready for the next task.
+	sscanf(doMove_msgBufIn, "Move %f %f %f", &angleToMove, &distanceToMove, &pwr);
 	if (angleToMove != 0)
 	{
 		float angleMeasured = getGyroDegrees(S2);
-		// Determine a correction angle dependant of pwr to prevent overshoot while turning.
-		// This is the best we can do at the moment and empirically determined.
-		float angleCorrection = pwr / 3.0;
-		if (angleCorrection < abs(angleToMove))
-		{
-			angleToMove = angleToMove - sgn(angleToMove) * angleCorrection;
-		}
-		else // For small angles and high pwr the correction angle gets too large so just take a fraction of angleToMove.
-		{
-			angleToMove = angleToMove / 3.0;
-		}
 		float angleTarget = angleMeasured + angleToMove;
-		setMotorSync(motorB, motorC, -100, pwr * sgn(angleToMove));
-		// If angleToMove is positive it is a right turn.
-		if (angleToMove > 0) // Right turn.
+		float diffAngle = angleTarget - angleMeasured;
+		float pwrTurn;
+		// If diffAngle is positive it is a right turn, otherwise a left turn.
+		// We quit the while loop when diffAngle is small enough for a certain time.
+		// This is to prevent that the while loop is quit when the diffAngle passes zero
+		// after which overshoot can occur.
+		// The overshoot can occur because stopping the motors after the while loop is not immediate.
+		while(abs(diffAngle) > 1.5 || time1[T1] < 300)
 		{
-			while(angleMeasured < angleTarget)
+			angleMeasured = getGyroDegrees(S2);
+			diffAngle = angleTarget - angleMeasured;
+			if (abs(diffAngle) > 1.5)
 			{
-				angleMeasured = getGyroDegrees(S2);
+				clearTimer(T1);
 			}
-		}
-		// If angleToMove is negative it is a left turn.
-		else // Left turn.
-		{
-			while(angleMeasured > angleTarget)
+			if (abs(diffAngle) > pwr)
 			{
-				angleMeasured = getGyroDegrees(S2);
+				// Maximize pwrTurn to the pwr setting.
+				pwrTurn = diffAngle > 0 ? pwr : -pwr;
 			}
+			else
+			{
+				pwrTurn = diffAngle;
+				if (abs(pwrTurn) < MINIMUM_TURNING_POWER)
+				{
+					// Minimize pwrTurn to MINIMUM_TURNING_POWER.
+					pwrTurn = pwrTurn > 0 ? MINIMUM_TURNING_POWER : -MINIMUM_TURNING_POWER;
+				}
+			}
+			// Turn with power proportional to the clipped difference angle.
+			// This gives a controlled turn without overshoot.
+			setMotorSync(motorB, motorC, -100, pwrTurn);
 		}
 		// Stop turning.
 		setMotorSync(motorB, motorC, 0, 0);
