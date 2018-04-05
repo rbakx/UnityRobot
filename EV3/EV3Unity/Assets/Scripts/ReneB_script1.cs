@@ -5,6 +5,7 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using UnityEditor;
+using UnityEngine.AI;
 using EV3WifiLib;
 
 
@@ -47,12 +48,15 @@ public class ReneB_script1 : MonoBehaviour
 	private bool guiConnect = false;
 	private bool guiDisconnect = false;
 	private int taskReady = 1;
+	private NavMeshPath path;
+	private bool gotoTarget = false;
 	// // To indicate robot is ready for the next task.
 
 	void Start ()
 	{
 		rb = GetComponent<Rigidbody> ();
 		myEV3 = new EV3WifiOrSimulation ();
+		path = new NavMeshPath ();
 	}
 
 	void Update ()
@@ -97,11 +101,11 @@ public class ReneB_script1 : MonoBehaviour
 			mPosition.z = Camera.main.gameObject.transform.position.y;
 			mPosition = Camera.main.ScreenToWorldPoint (mPosition);
 
-			var targetObject = GameObject.Find ("Cylinder");
+			var targetObject = GameObject.Find ("Ball");
 			if (leftMouseButtonClicked) {
 				targetObject.transform.position = mPosition;
 			}
-								
+
 			Input.ResetInputAxes (); // To prevent double input.
 			if (moveVertical > 0) {			// Forward
 				myEV3.SendMessage ("Move 0 10 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
@@ -117,17 +121,29 @@ public class ReneB_script1 : MonoBehaviour
 				myEV3.SendMessage ("Move 0 -5000 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
 			} else if (tPressed) {
 				// Execute task: Move to target object.
-				float targetDistance = Vector3.Distance (rb.transform.position, targetObject.transform.position);
-				Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
-				Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
-				var relativePos = targetObject.transform.position - rb.transform.position;
-				var relativeRot = Quaternion.LookRotation (relativePos);
-				float targetAngle = Quaternion.Angle (transform.rotation, relativeRot);
-				float targetAnglePlus90 = Quaternion.Angle (transform.rotation * rotPlus90, relativeRot);
-				float targetAngleMin90 = Quaternion.Angle (transform.rotation * rotMin90, relativeRot);
-				targetAngle = targetAnglePlus90 < targetAngleMin90 ? targetAngle : -targetAngle;
-				myEV3.SendMessage ("Move " + targetAngle.ToString () + " " + targetDistance.ToString () + " 30", "0"); // Move angle (-180 .. 180) distance (cm) power (0..100)
-				msPreviousTask = ms;
+				gotoTarget = true;
+			}
+
+			if (gotoTarget) {
+				if (taskReady == 1 && Vector3.Distance (rb.transform.position, targetObject.transform.position) > 10) {
+					bool result = NavMesh.CalculatePath (transform.position, targetObject.transform.position, NavMesh.AllAreas, path);
+					if (result) {
+						Debug.Log ("NavMesh result: " + result.ToString () + " " + path.corners.Length.ToString ());
+						float targetDistance = Vector3.Distance (rb.transform.position, path.corners [1]);
+						Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
+						Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
+						var relativePos = path.corners [1] - rb.transform.position;
+						var relativeRot = Quaternion.LookRotation (relativePos);
+						float targetAngle = Quaternion.Angle (transform.rotation, relativeRot);
+						float targetAnglePlus90 = Quaternion.Angle (transform.rotation * rotPlus90, relativeRot);
+						float targetAngleMin90 = Quaternion.Angle (transform.rotation * rotMin90, relativeRot);
+						targetAngle = targetAnglePlus90 < targetAngleMin90 ? targetAngle : -targetAngle;
+						myEV3.SendMessage ("Move " + targetAngle.ToString () + " " + targetDistance.ToString () + " 30", "0"); // Move angle (-180 .. 180) distance (cm) power (0..100)
+						msPreviousTask = ms;
+					} else {
+						gotoTarget = false;
+					}
+				}
 			}
 
 			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
