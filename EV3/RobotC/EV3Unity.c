@@ -33,6 +33,19 @@ char doMove_msgBufIn[MAX_MSG_LENGTH];  // To contain the incoming message for th
 int taskReady; // To indicate EV3 is ready for the next task.
 
 
+void resetPosition()
+{
+	// Calibrate Gyro according to ev3lessons.com.
+	getGyroRate(S2);
+	getGyroDegrees(S2);
+	delay(100);
+	resetGyro(S2);
+  // Reset motor encoders.
+	resetMotorEncoder(motorB);
+	resetMotorEncoder(motorC);
+}
+
+
 // Task for moving.
 task doMove()
 {
@@ -99,15 +112,15 @@ task main()
 	openMailboxIn("EV3_INBOX0");
 	openMailboxOut("EV3_OUTBOX0");
 
-	resetMotorEncoder(motorB);
-	resetMotorEncoder(motorC);
-	resetGyro(S2);
+	resetPosition();
+
 	taskReady = 1; // Indicate EV3 is ready for the next task.
 	while (true)
 	{
 		// Read input message.
 		// readMailboxIn() is non-blocking and returns "" if there is no message.
 		readMailboxIn("EV3_INBOX0", msgBufIn);
+		//displayBigTextLine(3, msgBufIn);
 		if (strcmp(msgBufIn, "") != 0)
 		{
 			displayBigTextLine(4, msgBufIn);
@@ -116,6 +129,10 @@ task main()
 				// Handle Move in a separate task, so that the main task can report the back the status in parallel.
 				strcpy(doMove_msgBufIn, msgBufIn); // Copy input message to input message for doTurn task.
 				startTask(doMove, kDefaultTaskPriority);
+			}
+			else if (strncmp(msgBufIn, "Reset", strlen("Reset")) == 0)
+			{
+				resetPosition();
 			}
 			else
 			{

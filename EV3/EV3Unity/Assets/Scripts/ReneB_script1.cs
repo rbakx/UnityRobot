@@ -30,6 +30,7 @@ static class Constants
 	// 0.5 cm per pwr per second, e.g. pwr = 30 -> 15 cm per second.
 	public const float PowerToAnglePerTimeTick = 3.0f * TimeTickMs / 1000.0f;
 	// 3 degrees per pwr per second, e.g. pwr = 30 -> 90 degrees per second.
+	public const float ScalePhysicalToVirtual = 1.0f;
 }
 
 
@@ -38,25 +39,30 @@ public class ReneB_script1 : MonoBehaviour
 	private EV3WifiOrSimulation myEV3;
 	private string ipAddress = "IP address";
 	private Rigidbody rb;
-	private float distanceMoved = 0.0f;
+	private Vector3 startPosition;
+	private Quaternion startRotation;
 	private float angleMoved = 0.0f;
+	private float distanceMoved = 0.0f;
 	private float distanceToObject = 0.0f;
-	private float distanceMovedPrevious = 0.0f;
 	private float angleMovedPrevious = 0.0f;
+	private float distanceMovedPrevious = 0.0f;
 	private long ms, msPrevious, msPreviousTask = 0;
 	private bool calibrated = false;
 	private bool guiConnect = false;
 	private bool guiDisconnect = false;
+	private bool guiReset = true;
 	private int taskReady = 1;
 	private NavMeshPath path;
 	private bool gotoTarget = false;
-	// // To indicate robot is ready for the next task.
+	// To indicate robot is ready for the next task.
 
 	void Start ()
 	{
 		rb = GetComponent<Rigidbody> ();
 		myEV3 = new EV3WifiOrSimulation ();
 		path = new NavMeshPath ();
+		startPosition = rb.transform.position;
+		startRotation = rb.rotation;
 	}
 
 	void Update ()
@@ -83,6 +89,20 @@ public class ReneB_script1 : MonoBehaviour
 			calibrated = false;
 			// Indicate disconnection request is handled.
 			guiDisconnect = false;
+		}
+
+		if (guiReset) {
+			myEV3.SendMessage ("Reset", "0");
+			angleMoved = 0.0f;
+			distanceMoved = 0.0f;
+			angleMovedPrevious = 0.0f;
+			distanceMovedPrevious = 0.0f;
+			rb.transform.position = startPosition;
+			rb.rotation = startRotation;
+			guiReset = false;
+			// Wait for robot to reset and flush the current message which contains pre-reset values.
+			Thread.Sleep (500);
+			myEV3.ReceiveMessage ("EV3_OUTBOX0");
 		}
 			
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
@@ -125,10 +145,9 @@ public class ReneB_script1 : MonoBehaviour
 			}
 
 			if (gotoTarget) {
-				if (taskReady == 1 && Vector3.Distance (rb.transform.position, targetObject.transform.position) > 10) {
+				if (taskReady == 1) {
 					bool result = NavMesh.CalculatePath (transform.position, targetObject.transform.position, NavMesh.AllAreas, path);
 					if (result) {
-						Debug.Log ("NavMesh result: " + result.ToString () + " " + path.corners.Length.ToString ());
 						float targetDistance = Vector3.Distance (rb.transform.position, path.corners [1]);
 						Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
 						Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
@@ -140,9 +159,10 @@ public class ReneB_script1 : MonoBehaviour
 						targetAngle = targetAnglePlus90 < targetAngleMin90 ? targetAngle : -targetAngle;
 						myEV3.SendMessage ("Move " + targetAngle.ToString () + " " + targetDistance.ToString () + " 30", "0"); // Move angle (-180 .. 180) distance (cm) power (0..100)
 						msPreviousTask = ms;
-					} else {
-						gotoTarget = false;
 					}
+				}
+				if (Vector3.Distance (rb.transform.position, targetObject.transform.position) < 5) {
+					gotoTarget = false;
 				}
 			}
 
@@ -154,6 +174,7 @@ public class ReneB_script1 : MonoBehaviour
 				string[] data = strMessage.Split (' ');
 				if (data.Length == 4) {
 					if (int.TryParse (data [0], out taskReady) && float.TryParse (data [1], out angleMoved) && float.TryParse (data [2], out distanceMoved) && float.TryParse (data [3], out distanceToObject)) {
+						distanceMoved = distanceMoved * Constants.ScalePhysicalToVirtual;
 						// If a new task just has been sent to the robot, the taskReady will still be on '1'.
 						// It takes about 3 time ticks of 100 ms to receive taskReady = 0 back from the robot.
 						// Therefore we force taskReady to 0 for 5 time ticks after the task has been sent.
@@ -193,23 +214,26 @@ public class ReneB_script1 : MonoBehaviour
 	void OnGUI ()
 	{
 		GUIStyle styleTextField = new GUIStyle (GUI.skin.textField);
-		styleTextField.fontSize = 24;
+		styleTextField.fontSize = 16;
 		ipAddress = GUILayout.TextField (ipAddress, styleTextField);
 		GUIStyle styleButton = new GUIStyle (GUI.skin.button);
-		styleButton.fontSize = 24;
+		styleButton.fontSize = 16;
 		if (myEV3.isConnected == false) {
 			styleButton.normal.textColor = Color.red;
-			if (GUILayout.Button ("Connect", styleButton, GUILayout.Width (200), GUILayout.Height (50))) {
+			if (GUILayout.Button ("Connect", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
 				guiConnect = true;
 			}
-		} else {
+		} else if (myEV3.isConnected == true) {
 			styleButton.normal.textColor = Color.green;
-			if (GUILayout.Button ("Disconnect", styleButton, GUILayout.Width (200), GUILayout.Height (50))) {
+			if (GUILayout.Button ("Disconnect", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
 				guiDisconnect = true;
 			}
 		}
+		if (GUILayout.Button ("Reset", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
+			guiReset = true;
+		}
 		GUIStyle styleLabel = new GUIStyle (GUI.skin.label);
-		styleLabel.fontSize = 24;
+		styleLabel.fontSize = 16;
 		if (myEV3.simOnly) {
 			GUILayout.Label ("Simulation mode", styleLabel);
 		} else {
@@ -227,11 +251,11 @@ public class EV3WifiOrSimulation
 	private EV3Wifi myEV3;
 	private bool newMessageArrived = false;
 	private string lastMessageSent = "";
-	private float distanceMoved = 0.0f;
 	private float angleMoved = 0.0f;
+	private float distanceMoved = 0.0f;
 	private float distanceToObject = 0.0f;
-	private float distanceToMoveRemaining = 0.0f;
 	private float angleToMoveRemaining = 0.0f;
+	private float distanceToMoveRemaining = 0.0f;
 	float angleToMovePerTimeTick, distanceToMovePerTimeTick;
 	float angleToMove, distanceToMove, pwr;
 	int taskReady = 1;
@@ -306,6 +330,9 @@ public class EV3WifiOrSimulation
 				distanceToMoveRemaining = distanceToMove != 0 ? Math.Abs (distanceToMove) - Math.Abs (distanceToMovePerTimeTick) : 0;
 				newMessageArrived = false;
 				taskReady = 0; // Indicate robot is not ready for the next task.
+			} else if (messageStrings [0] == "Reset") {
+				angleMoved = 0.0f;
+				distanceMoved = 0.0f;
 			}
 		} else if (angleToMove != 0 || distanceToMove != 0) {
 			if (angleToMoveRemaining > 0) {
