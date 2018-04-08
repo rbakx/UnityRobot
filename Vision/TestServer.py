@@ -1,26 +1,35 @@
 import socket
- 
-def Main():
-    host = "127.0.0.1"
-    port = 5000
-     
-    mySocket = socket.socket()
-    mySocket.bind((host,port))
-     
-    mySocket.listen(1)
-    conn, addr = mySocket.accept()
-    print ("Connection from: " + str(addr))
-    while True:
-            data = conn.recv(1024).decode()
-            if not data:
-                    break
-            print ("from connected  user: " + str(data))
-             
-            data = str(data).upper()
-            print ("sending: " + str(data))
-            conn.send(data.encode())
-             
-    conn.close()
-     
-if __name__ == '__main__':
-    Main()
+import sys
+
+# Create a TCP/IP socket
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+# Bind the socket to the port
+server_address = ('localhost', 5000)
+print('starting up on {} port {}'.format(*server_address))
+sock.bind(server_address)
+
+# Listen for incoming connections
+sock.listen(1)
+
+while True:
+    # Wait for a connection
+    print('waiting for a connection')
+    connection, client_address = sock.accept()
+    try:
+        print('connection from', client_address)
+
+        # Receive the data in small chunks and retransmit it
+        while True:
+            data = connection.recv(16)
+            print('received {!r}'.format(data))
+            if data:
+                print('sending data back to the client')
+                connection.sendall(data)
+            else:
+                print('no data from', client_address)
+                break
+
+    finally:
+        # Clean up the connection
+        connection.close()

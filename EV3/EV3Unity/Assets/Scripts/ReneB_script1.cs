@@ -93,10 +93,13 @@ public class ReneB_script1 : MonoBehaviour
 			guiDisconnectEV3 = false;
 		}
 		if (guiConnectVision) {
-			myVision.StartClient ();
+			myVision.Connect ();
 			// Indicate connection request is handled.
 			guiConnectVision = false;
-		}
+		} else if (guiDisconnectVision) {
+			myVision.Disconnect ();
+			// Indicate disconnection request is handled.
+			guiDisconnectVision = false;		}
 
 		if (guiReset) {
 			myEV3.SendMessage ("Reset", "0");
@@ -110,6 +113,13 @@ public class ReneB_script1 : MonoBehaviour
 			// Wait for robot to reset and flush the current message which contains pre-reset values.
 			Thread.Sleep (500);
 			myEV3.ReceiveMessage ("EV3_OUTBOX0");
+		}
+
+		if (myVision.isConnected) {
+			myVision.SendMessage ("hi there!");
+			string msg = myVision.ReceiveMessage ();
+			Debug.Log ("Received: " + msg);
+			//myVision.Disconnect ();
 		}
 			
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
@@ -246,6 +256,7 @@ public class ReneB_script1 : MonoBehaviour
 				guiDisconnectVision = true;
 			}
 		}
+		styleButton.normal.textColor = Color.red;
 		if (GUILayout.Button ("Reset", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
 			guiReset = true;
 		}
