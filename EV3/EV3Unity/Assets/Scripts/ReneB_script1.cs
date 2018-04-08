@@ -30,13 +30,13 @@ static class Constants
 	// 0.5 cm per pwr per second, e.g. pwr = 30 -> 15 cm per second.
 	public const float PowerToAnglePerTimeTick = 3.0f * TimeTickMs / 1000.0f;
 	// 3 degrees per pwr per second, e.g. pwr = 30 -> 90 degrees per second.
-	public const float ScalePhysicalToVirtual = 1.0f;
 }
 
 
 public class ReneB_script1 : MonoBehaviour
 {
 	private EV3WifiOrSimulation myEV3;
+	private VisionClient myVision;
 	private string ipAddress = "IP address";
 	private Rigidbody rb;
 	private Vector3 startPosition;
@@ -48,8 +48,10 @@ public class ReneB_script1 : MonoBehaviour
 	private float distanceMovedPrevious = 0.0f;
 	private long ms, msPrevious, msPreviousTask = 0;
 	private bool calibrated = false;
-	private bool guiConnect = false;
-	private bool guiDisconnect = false;
+	private bool guiConnectEV3 = false;
+	private bool guiDisconnectEV3 = false;
+	private bool guiConnectVision = false;
+	private bool guiDisconnectVision = false;
 	private bool guiReset = true;
 	private int taskReady = 1;
 	private NavMeshPath path;
@@ -60,6 +62,7 @@ public class ReneB_script1 : MonoBehaviour
 	{
 		rb = GetComponent<Rigidbody> ();
 		myEV3 = new EV3WifiOrSimulation ();
+		myVision = new VisionClient ();
 		path = new NavMeshPath ();
 		startPosition = rb.transform.position;
 		startRotation = rb.rotation;
@@ -73,22 +76,26 @@ public class ReneB_script1 : MonoBehaviour
 	void FixedUpdate ()
 	{
 		// We connect / disconnect with the EV3 in this thread (and not in the GUI thread) because the EV3 SendMessage and ReceiveMessage also happen in this thread.
-		if (guiConnect) {
+		if (guiConnectEV3) {
 			if (myEV3.Connect ("1234", ipAddress) == true) {
-				Debug.Log ("Connection succeeded");
+				Debug.Log ("EV3 connection succeeded");
 				// Set calibrated to false right after a switch from simulation to physical or vice versa to prevent jumping of position.
 				calibrated = false;
 			} else {
-				Debug.Log ("Connection failed");
+				Debug.Log ("EV3 connection failed");
 			}
-			// Indicate connection request is handled.
-			guiConnect = false;
-		} else if (guiDisconnect) {
+			guiConnectEV3 = false;
+		} else if (guiDisconnectEV3) {
 			myEV3.Disconnect ();
 			// Set calibrated to false right after a switch from simulation to physical or vice versa to prevent jumping of position.
 			calibrated = false;
 			// Indicate disconnection request is handled.
-			guiDisconnect = false;
+			guiDisconnectEV3 = false;
+		}
+		if (guiConnectVision) {
+			myVision.StartClient ();
+			// Indicate connection request is handled.
+			guiConnectVision = false;
 		}
 
 		if (guiReset) {
@@ -174,7 +181,6 @@ public class ReneB_script1 : MonoBehaviour
 				string[] data = strMessage.Split (' ');
 				if (data.Length == 4) {
 					if (int.TryParse (data [0], out taskReady) && float.TryParse (data [1], out angleMoved) && float.TryParse (data [2], out distanceMoved) && float.TryParse (data [3], out distanceToObject)) {
-						distanceMoved = distanceMoved * Constants.ScalePhysicalToVirtual;
 						// If a new task just has been sent to the robot, the taskReady will still be on '1'.
 						// It takes about 3 time ticks of 100 ms to receive taskReady = 0 back from the robot.
 						// Therefore we force taskReady to 0 for 5 time ticks after the task has been sent.
@@ -214,26 +220,37 @@ public class ReneB_script1 : MonoBehaviour
 	void OnGUI ()
 	{
 		GUIStyle styleTextField = new GUIStyle (GUI.skin.textField);
-		styleTextField.fontSize = 16;
+		styleTextField.fontSize = 12;
 		ipAddress = GUILayout.TextField (ipAddress, styleTextField);
 		GUIStyle styleButton = new GUIStyle (GUI.skin.button);
-		styleButton.fontSize = 16;
+		styleButton.fontSize = 12;
 		if (myEV3.isConnected == false) {
 			styleButton.normal.textColor = Color.red;
-			if (GUILayout.Button ("Connect", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
-				guiConnect = true;
+			if (GUILayout.Button ("Connect EV3", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
+				guiConnectEV3 = true;
 			}
 		} else if (myEV3.isConnected == true) {
 			styleButton.normal.textColor = Color.green;
-			if (GUILayout.Button ("Disconnect", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
-				guiDisconnect = true;
+			if (GUILayout.Button ("Disconnect EV3", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
+				guiDisconnectEV3 = true;
+			}
+		}
+		if (myVision.isConnected == false) {
+			styleButton.normal.textColor = Color.red;
+			if (GUILayout.Button ("Connect vision", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
+				guiConnectVision = true;
+			}
+		} else if (myVision.isConnected == true) {
+			styleButton.normal.textColor = Color.green;
+			if (GUILayout.Button ("Disconnect vision", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
+				guiDisconnectVision = true;
 			}
 		}
 		if (GUILayout.Button ("Reset", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
 			guiReset = true;
 		}
 		GUIStyle styleLabel = new GUIStyle (GUI.skin.label);
-		styleLabel.fontSize = 16;
+		styleLabel.fontSize = 12;
 		if (myEV3.simOnly) {
 			GUILayout.Label ("Simulation mode", styleLabel);
 		} else {
