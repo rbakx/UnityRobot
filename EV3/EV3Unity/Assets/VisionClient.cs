@@ -65,6 +65,8 @@ public class VisionClient
 		try {
 			// Release the sockets and reset the connectDone flag.
 			isConnected = false;
+			// Wait for a short while before closing the socket so callback methods can finish.
+			Thread.Sleep (100);
 			if (tcpSocket != null && tcpSocket.Connected == true) {
 				tcpSocket.Shutdown (SocketShutdown.Both);
 				tcpSocket.Close ();
@@ -73,7 +75,7 @@ public class VisionClient
 			sendDone.Reset ();
 			receiveDone.Reset ();
 		} catch (Exception e) {
-			Console.WriteLine (e.ToString ());
+			Debug.Log (e.ToString ());
 		}
 	}
 
@@ -88,10 +90,7 @@ public class VisionClient
 	{
 		// Receive the response from the remote device.  
 		Receive (tcpSocket);
-		receiveDone.WaitOne (5000); 
-
-		// Write the response to the console.  
-		Debug.Log ("Response received :" + response);  
+		receiveDone.WaitOne (5000);  
 		return response;
 	}
 
@@ -104,7 +103,7 @@ public class VisionClient
 			// Complete the connection.  
 			client.EndConnect (ar);  
 
-			Debug.Log ("Socket connected to: " + client.RemoteEndPoint.ToString ());  
+			//Debug.Log ("Socket connected to: " + client.RemoteEndPoint.ToString ());  
 
 			// Signal that the connection has been made.  
 			connectDone.Set ();  
@@ -130,39 +129,44 @@ public class VisionClient
 
 	private void ReceiveCallback (IAsyncResult ar)
 	{  
-		try {  
-			// Retrieve the state object and the client socket   
-			// from the asynchronous state object.  
-			StateObject state = (StateObject)ar.AsyncState;  
-			Socket client = state.workSocket;  
+		if (isConnected) {
+			try {  
+				// Retrieve the state object and the client socket   
+				// from the asynchronous state object.  
+				StateObject state = (StateObject)ar.AsyncState;  
+				Socket client = state.workSocket;
 
-			// Read data from the remote device.  
-			int bytesRead = client.EndReceive (ar);
+				// Read data from the remote device.  
+				int bytesRead = client.EndReceive (ar);
 
-			if (bytesRead > 0) {  
-				// There might be more data, so store the data received so far.  
-				state.sb.Append (Encoding.ASCII.GetString (state.buffer, 0, bytesRead));
-				Debug.Log ("In ReceiveCallback: " + state.sb.ToString ());  
-
-				// Get the rest of the data.  
-				client.BeginReceive (state.buffer, 0, StateObject.BufferSize, 0,  
-					new AsyncCallback (ReceiveCallback), state);  
-				if (state.sb.Length > 1) {  
-					response = state.sb.ToString ();  
+				if (bytesRead > 0) {  
+					// There might be more data, so store the data received so far.  
+					state.sb.Append (Encoding.ASCII.GetString (state.buffer, 0, bytesRead));
+					if (state.sb.Length > 1) {
+						// Take one JSON message from stringbuffer.
+						int index = state.sb.ToString().IndexOf("}");
+						if (index > 0) {
+							response = state.sb.ToString (0, index+1);
+							state.sb.Remove(0, index+1);
+							// Signal that all bytes have been received.  
+							receiveDone.Set ();
+							// Get the rest of the data.  
+							client.BeginReceive (state.buffer, 0, StateObject.BufferSize, 0,  
+								new AsyncCallback (ReceiveCallback), state);
+						}
+					}
+				} else {  
+					// All the data has arrived; put it in response.  
+					if (state.sb.Length > 1) {  
+						response = state.sb.ToString ();  
+					}  
+					// Signal that all bytes have been received.  
+					receiveDone.Set ();  
 				}  
-				// Signal that all bytes have been received.  
-				receiveDone.Set ();  
-			} else {  
-				// All the data has arrived; put it in response.  
-				if (state.sb.Length > 1) {  
-					response = state.sb.ToString ();  
-				}  
-				// Signal that all bytes have been received.  
-				receiveDone.Set ();  
-			}  
-		} catch (Exception e) {  
-			Debug.Log (e.ToString ()); 
-		}  
+			} catch (Exception e) {  
+				Debug.Log (e.ToString ()); 
+			}
+		}
 	}
 
 	private void Send (Socket client, String data)
@@ -183,7 +187,6 @@ public class VisionClient
 
 			// Complete sending the data to the remote device.  
 			int bytesSent = client.EndSend (ar);  
-			Debug.Log ("Sent " + bytesSent.ToString () + " bytes to server.");  
 
 			// Signal that all bytes have been sent.  
 			sendDone.Set ();  

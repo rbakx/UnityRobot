@@ -116,10 +116,8 @@ public class ReneB_script1 : MonoBehaviour
 		}
 
 		if (myVision.isConnected) {
-			myVision.SendMessage ("hi there!");
 			string msg = myVision.ReceiveMessage ();
 			Debug.Log ("Received: " + msg);
-			//myVision.Disconnect ();
 		}
 			
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
@@ -269,6 +267,15 @@ public class ReneB_script1 : MonoBehaviour
 		}
 	}
 
+	void OnApplicationQuit()
+	{
+		if (guiDisconnectEV3) {
+			myEV3.Disconnect ();
+		}
+		if (guiDisconnectVision) {
+			myVision.Disconnect ();
+		}
+	}
 }
 
 
