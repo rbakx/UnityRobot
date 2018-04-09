@@ -1,36 +1,37 @@
-import socket
-import sys
+#file:server.py
+import time
+from JsonSocket import Server
 
-# Create a TCP/IP socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+host = 'LOCALHOST'
+port = 5000
 
-# Bind the socket to the port
-server_address = ('localhost', 5000)
-print('starting up on {} port {}'.format(*server_address))
-sock.bind(server_address)
+data = {
+     "bot1" : {
+         "x" : "20",
+         "y" : "30",
+         "r" : "42"
+         },
+     "bot2" : {
+         "x" : "50",
+         "y" : "60",
+         "r" : "72"
+         }
+ }
+data = {
+     "bot1" : [20,30,42],
+     "bot2" : [50,60,72],
+ }
 
-# Listen for incoming connections
-sock.listen(1)
+server = Server(host, port)
+#server.accept()
 
 while True:
-    # Wait for a connection
-    print('waiting for a connection')
-    connection, client_address = sock.accept()
+    #data = server.recv()
     try:
-        print('connection from', client_address)
+    	server.send(data)
+    	time.sleep(0.1);
+    except:
+    	print('waiting for a connection')
+    	server.accept()
 
-        # Receive the data in small chunks and retransmit it
-        while True:
-            data = connection.recv(16)
-            #print('received {!r}'.format(data))
-            print('received: ', data.decode())
-            if data:
-                print('sending data back to the client')
-                connection.sendall(data)
-            else:
-                print('no data from', client_address)
-                break
-
-    finally:
-        # Clean up the connection
-        connection.close()
+server.close()

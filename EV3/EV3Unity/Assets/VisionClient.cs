@@ -143,31 +143,17 @@ public class VisionClient
 					// There might be more data, so store the data received so far.  
 					state.sb.Append (Encoding.ASCII.GetString (state.buffer, 0, bytesRead));
 					if (state.sb.Length > 1) {
-						// Take one JSON message from stringbuffer.
-						int index = state.sb.ToString().IndexOf("}");
-						if (index > 0) {
-							response = state.sb.ToString (0, index+1);
-							state.sb.Remove(0, index+1);
-							// Signal that all bytes have been received.  
-							receiveDone.Set ();
-							// Get the rest of the data.  
-							client.BeginReceive (state.buffer, 0, StateObject.BufferSize, 0,  
-								new AsyncCallback (ReceiveCallback), state);
-						}
+						response = state.sb.ToString ();
+						// Signal that all bytes have been received.  
+						receiveDone.Set ();
 					}
-				} else {  
-					// All the data has arrived; put it in response.  
-					if (state.sb.Length > 1) {  
-						response = state.sb.ToString ();  
-					}  
-					// Signal that all bytes have been received.  
-					receiveDone.Set ();  
-				}  
+				}
 			} catch (Exception e) {  
 				Debug.Log (e.ToString ()); 
 			}
 		}
 	}
+
 
 	private void Send (Socket client, String data)
 	{  

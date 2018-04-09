@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using UnityEditor;
 using UnityEngine.AI;
+using Newtonsoft.Json;
 using EV3WifiLib;
 
 
@@ -118,6 +119,8 @@ public class ReneB_script1 : MonoBehaviour
 		if (myVision.isConnected) {
 			string msg = myVision.ReceiveMessage ();
 			Debug.Log ("Received: " + msg);
+			VisionData deserializedVisionData = JsonConvert.DeserializeObject<VisionData>(msg);
+			Debug.Log ("Deserialized:" + deserializedVisionData.bot1[2]);
 		}
 			
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
@@ -278,6 +281,12 @@ public class ReneB_script1 : MonoBehaviour
 	}
 }
 
+public class VisionData
+{
+	public float[] bot1 = {0.0f,0.0f,0.0f};
+	public float[] bot2 = {0.0f,0.0f,0.0f};
+
+}
 
 public class EV3WifiOrSimulation
 {
