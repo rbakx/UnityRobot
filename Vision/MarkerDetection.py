@@ -7,6 +7,7 @@ class MarkerDetector(object):
 	def __init__(self, cameraId):
 		self.cap = cv2.VideoCapture(cameraId)
 		self.dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_1000)
+		self.videoSize = self.cap.get(3), self.cap.get(4)
  
 	def markerDetect(self):
 		try:
@@ -18,7 +19,8 @@ class MarkerDetector(object):
 
 				res = cv2.aruco.detectMarkers(gray,self.dictionary)
 				#print(res[0],res[1],len(res[2]))
-				rotation,location = -1,(-1,-1)
+				# Start with illegal value, used for checking if vision data is valid.
+				rotation,location = 400,(0,0)
 
 				if len(res[0]) > 0:
 					cv2.aruco.drawDetectedMarkers(gray,res[0],res[1])

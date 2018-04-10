@@ -7,13 +7,13 @@ host = 'LOCALHOST'
 port = 5000
 
 data = {
-     "bot1" : [20,30,42],
-     "bot2" : [50,60,72],
+	"videoSize" : [-1,-1],
+    "bot1" : [-1,-1,-1]
 }
-data["bot1"] = [77,88,99]
 
 server = Server(host, port)
-markerDetector = MarkerDetector(2)
+markerDetector = MarkerDetector(0)
+data["videoSize"] = [markerDetector.videoSize[0],markerDetector.videoSize[1]]
 
 print('waiting for a connection')
 server.accept()

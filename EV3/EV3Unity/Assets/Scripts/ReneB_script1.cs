@@ -58,6 +58,8 @@ public class ReneB_script1 : MonoBehaviour
 	private NavMeshPath path;
 	private bool gotoTarget = false;
 	private VisionData visionData = null;
+	private GameObject targetObject;
+	private float xmin,xmax,zmin,zmax;
 	// To indicate robot is ready for the next task.
 
 	void Start ()
@@ -68,6 +70,12 @@ public class ReneB_script1 : MonoBehaviour
 		path = new NavMeshPath ();
 		startPosition = rb.transform.position;
 		startRotation = rb.rotation;
+		targetObject = GameObject.Find ("Ball");
+		var groundObject = GameObject.Find ("Ground");
+		xmin = groundObject.GetComponent<Renderer> ().bounds.min.x;
+		xmax = groundObject.GetComponent<Renderer> ().bounds.max.x;
+		zmin = groundObject.GetComponent<Renderer> ().bounds.min.z;
+		zmax = groundObject.GetComponent<Renderer> ().bounds.max.z;
 	}
 
 	void Update ()
@@ -141,7 +149,6 @@ public class ReneB_script1 : MonoBehaviour
 			mPosition.z = Camera.main.gameObject.transform.position.y;
 			mPosition = Camera.main.ScreenToWorldPoint (mPosition);
 
-			var targetObject = GameObject.Find ("Ball");
 			if (leftMouseButtonClicked) {
 				targetObject.transform.position = mPosition;
 			}
@@ -209,11 +216,11 @@ public class ReneB_script1 : MonoBehaviour
 								Quaternion rot = Quaternion.Euler (0, angleMovedDelta, 0);
 								rb.MoveRotation (rb.rotation * rot);
 								rb.MovePosition (rb.transform.position + distanceMovedDelta * rb.transform.forward);
-							} else {
+							} else if (visionData.bot1 [0] <= 360) {
 								Vector3 vec = new Vector3 ();
-								vec.x = visionData.bot1 [1] / 10.0f;
-								vec.y = 3.3f;
-								vec.z = visionData.bot1 [2] / 10.0f;
+								vec.x = map (visionData.bot1[1],0,visionData.videoSize[0],xmin,xmax);
+								vec.y = rb.transform.position.y;
+								vec.z = map (visionData.bot1[2],visionData.videoSize[1],0,zmin,zmax);
 								rb.transform.position = vec;
 								rb.rotation = Quaternion.Euler (0, visionData.bot1 [0], 0);
 							}
@@ -268,10 +275,12 @@ public class ReneB_script1 : MonoBehaviour
 				guiDisconnectVision = true;
 			}
 		}
+
 		styleButton.normal.textColor = Color.red;
 		if (GUILayout.Button ("Reset", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
 			guiReset = true;
 		}
+
 		GUIStyle styleLabel = new GUIStyle (GUI.skin.label);
 		styleLabel.fontSize = 12;
 		if (myEV3.simOnly) {
@@ -279,6 +288,11 @@ public class ReneB_script1 : MonoBehaviour
 		} else {
 			GUILayout.Label ("Physical mode", styleLabel);
 		}
+	}
+
+	float map(float s, float a1, float a2, float b1, float b2)
+	{
+		return b1 + (s-a1)*(b2-b1)/(a2-a1);
 	}
 
 	void OnApplicationQuit ()
@@ -294,8 +308,8 @@ public class ReneB_script1 : MonoBehaviour
 
 public class VisionData
 {
+	public float[] videoSize = { 0.0f, 0.0f };
 	public float[] bot1 = { 0.0f, 0.0f, 0.0f };
-	public float[] bot2 = { 0.0f, 0.0f, 0.0f };
 
 }
 
