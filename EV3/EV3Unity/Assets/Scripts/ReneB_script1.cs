@@ -60,6 +60,8 @@ public class ReneB_script1 : MonoBehaviour
 	private VisionData visionData = null;
 	private GameObject targetObject;
 	private float xmin,xmax,zmin,zmax;
+	private LineRenderer lineRenderer;
+
 	// To indicate robot is ready for the next task.
 
 	void Start ()
@@ -76,6 +78,7 @@ public class ReneB_script1 : MonoBehaviour
 		xmax = groundObject.GetComponent<Renderer> ().bounds.max.x;
 		zmin = groundObject.GetComponent<Renderer> ().bounds.min.z;
 		zmax = groundObject.GetComponent<Renderer> ().bounds.max.z;
+		lineRenderer = GetComponent<LineRenderer>();
 	}
 
 	void Update ()
@@ -189,8 +192,15 @@ public class ReneB_script1 : MonoBehaviour
 					}
 				}
 				if (Vector3.Distance (rb.transform.position, targetObject.transform.position) < 5) {
+					lineRenderer.SetVertexCount(0);
 					gotoTarget = false;
+				} else {
+					lineRenderer.positionCount = path.corners.Length;
+					for (int i = 0; i < path.corners.Length; i++) {
+						lineRenderer.SetPosition (i, path.corners [i]);
+					}
 				}
+
 			}
 
 			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
@@ -219,7 +229,7 @@ public class ReneB_script1 : MonoBehaviour
 							} else if (visionData.bot1 [0] <= 360) {
 								Vector3 vec = new Vector3 ();
 								vec.x = map (visionData.bot1[1],0,visionData.videoSize[0],xmin,xmax);
-								vec.y = rb.transform.position.y;
+								vec.y = rb.transform.position.y; // Original height.
 								vec.z = map (visionData.bot1[2],visionData.videoSize[1],0,zmin,zmax);
 								rb.transform.position = vec;
 								rb.rotation = Quaternion.Euler (0, visionData.bot1 [0], 0);
