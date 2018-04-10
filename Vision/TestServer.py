@@ -6,21 +6,10 @@ host = 'LOCALHOST'
 port = 5000
 
 data = {
-     "bot1" : {
-         "x" : "20",
-         "y" : "30",
-         "r" : "42"
-         },
-     "bot2" : {
-         "x" : "50",
-         "y" : "60",
-         "r" : "72"
-         }
- }
-data = {
      "bot1" : [20,30,42],
      "bot2" : [50,60,72],
- }
+}
+data["bot1"] = [77,88,99]
 
 server = Server(host, port)
 #server.accept()

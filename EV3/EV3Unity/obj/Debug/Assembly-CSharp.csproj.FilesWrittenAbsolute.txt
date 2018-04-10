@@ -14,12 +14,12 @@
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.GoogleAudioSpatializer.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.HoloLens.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.SpatialTracking.dll
+/Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/Newtonsoft.Json.Net20.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/EV3WifiLib.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.Advertisements.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.Analytics.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.Purchasing.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/UnityEngine.StandardEvents.dll
-/Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/Newtonsoft.Json.Net20.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/Unity.Cecil.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/Unity.SerializationLogic.dll
 /Users/reneb/Git/GitHub/UnityRobot/EV3/EV3Unity/Temp/bin/Debug/Unity.DataContract.dll

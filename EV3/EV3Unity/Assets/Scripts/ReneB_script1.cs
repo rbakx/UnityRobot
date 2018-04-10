@@ -57,6 +57,7 @@ public class ReneB_script1 : MonoBehaviour
 	private int taskReady = 1;
 	private NavMeshPath path;
 	private bool gotoTarget = false;
+	private VisionData visionData = null;
 	// To indicate robot is ready for the next task.
 
 	void Start ()
@@ -100,7 +101,8 @@ public class ReneB_script1 : MonoBehaviour
 		} else if (guiDisconnectVision) {
 			myVision.Disconnect ();
 			// Indicate disconnection request is handled.
-			guiDisconnectVision = false;		}
+			guiDisconnectVision = false;
+		}
 
 		if (guiReset) {
 			myEV3.SendMessage ("Reset", "0");
@@ -118,9 +120,9 @@ public class ReneB_script1 : MonoBehaviour
 
 		if (myVision.isConnected) {
 			string msg = myVision.ReceiveMessage ();
-			Debug.Log ("Received: " + msg);
-			VisionData deserializedVisionData = JsonConvert.DeserializeObject<VisionData>(msg);
-			Debug.Log ("Deserialized:" + deserializedVisionData.bot1[2]);
+			visionData = JsonConvert.DeserializeObject<VisionData> (msg);
+		} else {
+			visionData = null;
 		}
 			
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
@@ -203,9 +205,18 @@ public class ReneB_script1 : MonoBehaviour
 						distanceMovedPrevious = distanceMoved;
 						angleMovedPrevious = angleMoved;
 						if (calibrated) {
-							Quaternion rot = Quaternion.Euler (0, angleMovedDelta, 0);
-							rb.MoveRotation (rb.rotation * rot);
-							rb.MovePosition (rb.transform.position + distanceMovedDelta * rb.transform.forward);
+							if (visionData == null) {
+								Quaternion rot = Quaternion.Euler (0, angleMovedDelta, 0);
+								rb.MoveRotation (rb.rotation * rot);
+								rb.MovePosition (rb.transform.position + distanceMovedDelta * rb.transform.forward);
+							} else {
+								Vector3 vec = new Vector3 ();
+								vec.x = visionData.bot1 [1] / 10.0f;
+								vec.y = 3.3f;
+								vec.z = visionData.bot1 [2] / 10.0f;
+								rb.transform.position = vec;
+								rb.rotation = Quaternion.Euler (0, visionData.bot1 [0], 0);
+							}
 						}
 						calibrated = true;
 
@@ -270,7 +281,7 @@ public class ReneB_script1 : MonoBehaviour
 		}
 	}
 
-	void OnApplicationQuit()
+	void OnApplicationQuit ()
 	{
 		if (guiDisconnectEV3) {
 			myEV3.Disconnect ();
@@ -283,8 +294,8 @@ public class ReneB_script1 : MonoBehaviour
 
 public class VisionData
 {
-	public float[] bot1 = {0.0f,0.0f,0.0f};
-	public float[] bot2 = {0.0f,0.0f,0.0f};
+	public float[] bot1 = { 0.0f, 0.0f, 0.0f };
+	public float[] bot2 = { 0.0f, 0.0f, 0.0f };
 
 }
 
