@@ -24,8 +24,8 @@ while(True):
     # The default value of params.thresholdStep (10?) seems to work well.
     # To speed processing up, increase to 20 or more.
     #params.thresholdStep = 20
-    params.minThreshold = 20;
-    params.maxThreshold = 200;
+    params.minThreshold = 20
+    params.maxThreshold = 200
 
     # Filter by Area.
     # This prevents that many small blobs (one pixel) will be detected.

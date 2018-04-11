@@ -55,11 +55,13 @@ public class ReneB_script1 : MonoBehaviour
 	private bool guiDisconnectVision = false;
 	private bool guiReset = true;
 	private int taskReady = 1;
-	private NavMeshPath path;
 	private bool gotoTarget = false;
+	private bool shootTheBall = false;
+	private bool isBehindTheBall = false;
 	private VisionData visionData = null;
 	private GameObject targetObject;
-	private float xmin,xmax,zmin,zmax;
+	private Vector3 goalPosition = new Vector3 (-200.0f, 0.0f, 0.0f);
+	private float xmin, xmax, zmin, zmax;
 	private LineRenderer lineRenderer;
 
 	// To indicate robot is ready for the next task.
@@ -69,7 +71,6 @@ public class ReneB_script1 : MonoBehaviour
 		rb = GetComponent<Rigidbody> ();
 		myEV3 = new EV3WifiOrSimulation ();
 		myVision = new VisionClient ();
-		path = new NavMeshPath ();
 		startPosition = rb.transform.position;
 		startRotation = rb.rotation;
 		targetObject = GameObject.Find ("Ball");
@@ -78,7 +79,7 @@ public class ReneB_script1 : MonoBehaviour
 		xmax = groundObject.GetComponent<Renderer> ().bounds.max.x;
 		zmin = groundObject.GetComponent<Renderer> ().bounds.min.z;
 		zmax = groundObject.GetComponent<Renderer> ().bounds.max.z;
-		lineRenderer = GetComponent<LineRenderer>();
+		lineRenderer = GetComponent<LineRenderer> ();
 	}
 
 	void Update ()
@@ -132,6 +133,12 @@ public class ReneB_script1 : MonoBehaviour
 		if (myVision.isConnected) {
 			string msg = myVision.ReceiveMessage ();
 			visionData = JsonConvert.DeserializeObject<VisionData> (msg);
+			Vector3 vec = new Vector3 ();
+			vec.x = map (visionData.ball [1], 0, visionData.videoSize [0], xmin, xmax);
+			vec.y = targetObject.transform.position.y; // Original height.
+			vec.z = map (visionData.ball [2], visionData.videoSize [1], 0, zmin, zmax);
+			targetObject.transform.position = vec;
+
 		} else {
 			visionData = null;
 		}
@@ -146,6 +153,7 @@ public class ReneB_script1 : MonoBehaviour
 			bool fPressed = Input.GetKey (KeyCode.F);
 			bool bPressed = Input.GetKey (KeyCode.B);
 			bool tPressed = Input.GetKey (KeyCode.T);
+			bool gPressed = Input.GetKey (KeyCode.G);
 			bool leftMouseButtonClicked = Input.GetMouseButton (1);
 			// Get mouse position and convert to World coordinates.
 			Vector3 mPosition = Input.mousePosition;
@@ -172,35 +180,23 @@ public class ReneB_script1 : MonoBehaviour
 			} else if (tPressed) {
 				// Execute task: Move to target object.
 				gotoTarget = true;
+			} else if (gPressed) {
+				// Execute task: Shoot the ball.
+				shootTheBall = true;
+				isBehindTheBall = false;
 			}
 
 			if (gotoTarget) {
-				if (taskReady == 1) {
-					bool result = NavMesh.CalculatePath (transform.position, targetObject.transform.position, NavMesh.AllAreas, path);
-					if (result) {
-						float targetDistance = Vector3.Distance (rb.transform.position, path.corners [1]);
-						Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
-						Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
-						var relativePos = path.corners [1] - rb.transform.position;
-						var relativeRot = Quaternion.LookRotation (relativePos);
-						float targetAngle = Quaternion.Angle (transform.rotation, relativeRot);
-						float targetAnglePlus90 = Quaternion.Angle (transform.rotation * rotPlus90, relativeRot);
-						float targetAngleMin90 = Quaternion.Angle (transform.rotation * rotMin90, relativeRot);
-						targetAngle = targetAnglePlus90 < targetAngleMin90 ? targetAngle : -targetAngle;
-						myEV3.SendMessage ("Move " + targetAngle.ToString () + " " + targetDistance.ToString () + " 30", "0"); // Move angle (-180 .. 180) distance (cm) power (0..100)
-						msPreviousTask = ms;
-					}
-				}
-				if (Vector3.Distance (rb.transform.position, targetObject.transform.position) < 5) {
-					lineRenderer.SetVertexCount(0);
-					gotoTarget = false;
+				gotoTarget = !GotoWayPoint (targetObject.transform.position);
+			} else if (shootTheBall) {
+				if (!isBehindTheBall) {
+					Vector3 fromBallToGoal = targetObject.transform.position - goalPosition;
+					fromBallToGoal = Vector3.ClampMagnitude (fromBallToGoal, 30);
+					Vector3 behindTheBall = targetObject.transform.position + fromBallToGoal;
+					isBehindTheBall = GotoWayPoint (behindTheBall);
 				} else {
-					lineRenderer.positionCount = path.corners.Length;
-					for (int i = 0; i < path.corners.Length; i++) {
-						lineRenderer.SetPosition (i, path.corners [i]);
-					}
+					shootTheBall = !GotoWayPoint (targetObject.transform.position);
 				}
-
 			}
 
 			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
@@ -228,9 +224,9 @@ public class ReneB_script1 : MonoBehaviour
 								rb.MovePosition (rb.transform.position + distanceMovedDelta * rb.transform.forward);
 							} else if (visionData.bot1 [0] <= 360) {
 								Vector3 vec = new Vector3 ();
-								vec.x = map (visionData.bot1[1],0,visionData.videoSize[0],xmin,xmax);
+								vec.x = map (visionData.bot1 [1], 0, visionData.videoSize [0], xmin, xmax);
 								vec.y = rb.transform.position.y; // Original height.
-								vec.z = map (visionData.bot1[2],visionData.videoSize[1],0,zmin,zmax);
+								vec.z = map (visionData.bot1 [2], visionData.videoSize [1], 0, zmin, zmax);
 								rb.transform.position = vec;
 								rb.rotation = Quaternion.Euler (0, visionData.bot1 [0], 0);
 							}
@@ -254,6 +250,38 @@ public class ReneB_script1 : MonoBehaviour
 			}
 			msPrevious = ms;
 		}
+	}
+
+	bool GotoWayPoint (Vector3 position)
+	{
+		bool finished = false;
+		if (taskReady == 1) {
+			NavMeshPath path = new NavMeshPath ();
+			bool result = NavMesh.CalculatePath (rb.transform.position, position, NavMesh.AllAreas, path);
+			if (result && path.corners.Length > 1) {
+				float targetDistance = Vector3.Distance (rb.transform.position, path.corners [1]);
+				Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
+				Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
+				var relativePos = path.corners [1] - rb.transform.position;
+				var relativeRot = Quaternion.LookRotation (relativePos);
+				float targetAngle = Quaternion.Angle (rb.transform.rotation, relativeRot);
+				float targetAnglePlus90 = Quaternion.Angle (rb.transform.rotation * rotPlus90, relativeRot);
+				float targetAngleMin90 = Quaternion.Angle (rb.transform.rotation * rotMin90, relativeRot);
+				targetAngle = targetAnglePlus90 < targetAngleMin90 ? targetAngle : -targetAngle;
+				myEV3.SendMessage ("Move " + targetAngle.ToString () + " " + targetDistance.ToString () + " 30", "0"); // Move angle (-180 .. 180) distance (cm) power (0..100)
+				msPreviousTask = ms;
+			}
+			if (Vector3.Distance (rb.transform.position, position) < 5) {
+				lineRenderer.positionCount = 0;
+				finished = true;
+			} else {
+				lineRenderer.positionCount = path.corners.Length;
+				for (int i = 0; i < path.corners.Length; i++) {
+					lineRenderer.SetPosition (i, path.corners [i]);
+				}
+			}
+		}
+		return finished;
 	}
 
 	void OnGUI ()
@@ -300,17 +328,17 @@ public class ReneB_script1 : MonoBehaviour
 		}
 	}
 
-	float map(float s, float a1, float a2, float b1, float b2)
+	float map (float s, float a1, float a2, float b1, float b2)
 	{
-		return b1 + (s-a1)*(b2-b1)/(a2-a1);
+		return b1 + (s - a1) * (b2 - b1) / (a2 - a1);
 	}
 
 	void OnApplicationQuit ()
 	{
-		if (guiDisconnectEV3) {
+		if (myVision.isConnected) {
 			myEV3.Disconnect ();
 		}
-		if (guiDisconnectVision) {
+		if (myVision.isConnected) {
 			myVision.Disconnect ();
 		}
 	}
@@ -320,6 +348,7 @@ public class VisionData
 {
 	public float[] videoSize = { 0.0f, 0.0f };
 	public float[] bot1 = { 0.0f, 0.0f, 0.0f };
+	public float[] ball = { 0.0f, 0.0f, 0.0f };
 
 }
 

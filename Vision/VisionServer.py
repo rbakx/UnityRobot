@@ -1,27 +1,30 @@
 #file:server.py
 import time
 from JsonSocket import Server
-from MarkerDetection import MarkerDetector
+from Vision import VisionDetector
 
 host = 'LOCALHOST'
 port = 5000
 
 data = {
 	"videoSize" : [-1,-1],
-    "bot1" : [-1,-1,-1]
+    "bot1" : [1000,-1,-1],
+    "ball" : [1000,-1,-1]
 }
 
 server = Server(host, port)
-markerDetector = MarkerDetector(0)
-data["videoSize"] = [markerDetector.videoSize[0],markerDetector.videoSize[1]]
+visionDetector = VisionDetector(2)
+data["videoSize"] = [visionDetector.videoSize[0],visionDetector.videoSize[1]]
 
 print('waiting for a connection')
 server.accept()
 
 while True:
 	try:
-		rotation,location = markerDetector.markerDetect()
-		data["bot1"] = [rotation, location[0], location[1]]
+		markerAngle,markerPosition,blobSize,blobPosition = visionDetector.detect()
+		data["bot1"] = [markerAngle, markerPosition[0], markerPosition[1]]
+		data["ball"] = [blobSize, blobPosition[0], blobPosition[1]]
+		print (data)
 		server.send(data)
 		time.sleep(0.1);
 	except:

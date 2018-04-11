@@ -107,7 +107,6 @@ class Client(object):
 def _send(socket, data):
   try:
     serialized = json.dumps(data)
-    print(serialized)
   except (TypeError, ValueError) as e:
     raise Exception('You can only send JSON-serializable data')
   # send the length of the serialized data first
