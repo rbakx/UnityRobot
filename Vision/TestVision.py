@@ -1,6 +1,6 @@
 from Vision import VisionDetector
 
-visionDetector = VisionDetector(2)
+visionDetector = VisionDetector(1)
 
 while(True):
 	markerAngle,markerPosition,blobSize,blobPosition = visionDetector.detect()

@@ -5,7 +5,7 @@ import math
 class VisionDetector(object):
 
 	def __init__(self, cameraId):
-		self.MinBlobSize = 40
+		self.MinBlobSize = 15
 		self.MaxBlobSize = 80
 		self.cap = cv2.VideoCapture(cameraId)
 		self.dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_1000)

@@ -10,9 +10,9 @@ using Newtonsoft.Json;
 using EV3WifiLib;
 
 
-// Example script which serves as a proof of concept of the EV3 robot controlled from Unity, represented by a car object.
+// Example script which serves as a proof of concept of the EV3 robot controlled from Unity, represented by a Bot object.
 // In this simple example, the EV3 can be controlled using the WASD keys or the arrow keys.
-// It sends back sensor information from the gyro and motor encoders which is used to move the car object.
+// It sends back sensor information from the gyro and motor encoders which is used to move the Bot object.
 // The scaling is such that one scale unit in Unity corresponds to 1 cm in the physical world.
 // The communication between Unity and the robot is done with EV3WifiLib.
 // The robot runs a TCP socket server and Unity a socket client, meaning the robot listens
@@ -161,6 +161,8 @@ public class ReneB_script1 : MonoBehaviour
 			mPosition = Camera.main.ScreenToWorldPoint (mPosition);
 
 			if (leftMouseButtonClicked) {
+				// Keep the y position.
+				mPosition.y = targetObject.transform.position.y;
 				targetObject.transform.position = mPosition;
 			}
 
