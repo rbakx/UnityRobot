@@ -34,7 +34,7 @@ static class Constants
 }
 
 
-public class ReneB_script1 : MonoBehaviour
+public class BotController : MonoBehaviour
 {
 	private EV3WifiOrSimulation myEV3;
 	private VisionClient myVision;
@@ -60,9 +60,12 @@ public class ReneB_script1 : MonoBehaviour
 	private bool isBehindTheBall = false;
 	private VisionData visionData = null;
 	private GameObject targetObject;
-	private Vector3 goalPosition = new Vector3 (-200.0f, 0.0f, 0.0f);
+	private Vector3 goalPosition = new Vector3 (-180.0f, 0.0f, 0.0f);
 	private float xmin, xmax, zmin, zmax;
+	private float botLength;
 	private LineRenderer lineRenderer;
+	private Vector3 ballPosition;
+	private Vector3 botOffset = new Vector3 (0.0f, 0.0f, 0.0f);
 
 	// To indicate robot is ready for the next task.
 
@@ -79,6 +82,7 @@ public class ReneB_script1 : MonoBehaviour
 		xmax = groundObject.GetComponent<Renderer> ().bounds.max.x;
 		zmin = groundObject.GetComponent<Renderer> ().bounds.min.z;
 		zmax = groundObject.GetComponent<Renderer> ().bounds.max.z;
+		botLength = rb.GetComponent<Renderer>().bounds.size.x;
 		lineRenderer = GetComponent<LineRenderer> ();
 	}
 
@@ -128,6 +132,10 @@ public class ReneB_script1 : MonoBehaviour
 			// Wait for robot to reset and flush the current message which contains pre-reset values.
 			Thread.Sleep (500);
 			myEV3.ReceiveMessage ("EV3_OUTBOX0");
+			gotoTarget = false;
+			shootTheBall = false;
+			isBehindTheBall = false;
+
 		}
 
 		if (myVision.isConnected) {
@@ -146,7 +154,6 @@ public class ReneB_script1 : MonoBehaviour
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
 		if (ms - msPrevious > Constants.TimeTickMs) {
 			// Below code is executed once per TimeTickMs. This to limit communication to physical robot.ScreenToWorldPoint
-
 			// Read input keys. Because we get here once in so many calls of FixedUpdate we have to use key events which last long enough.
 			float moveHorizontal = Input.GetAxis ("Horizontal");
 			float moveVertical = Input.GetAxis ("Vertical");
@@ -187,22 +194,26 @@ public class ReneB_script1 : MonoBehaviour
 				shootTheBall = true;
 				isBehindTheBall = false;
 			}
-
+				
 			if (gotoTarget) {
 				gotoTarget = !GotoWayPoint (targetObject.transform.position);
 			} else if (shootTheBall) {
-				if (!isBehindTheBall) {
-					Vector3 fromBallToGoal = targetObject.transform.position - goalPosition;
-					fromBallToGoal = Vector3.ClampMagnitude (fromBallToGoal, 30);
-					Vector3 behindTheBall = targetObject.transform.position + fromBallToGoal;
+				if (Vector3.Distance (targetObject.transform.position, goalPosition) < 20) {
+					shootTheBall = false;
+					isBehindTheBall = false;
+				} else if (!isBehindTheBall) {
+					ballPosition = targetObject.transform.position;
+					Vector3 fromGoalToBall = targetObject.transform.position - goalPosition;
+					fromGoalToBall = Vector3.ClampMagnitude (fromGoalToBall, 30);
+					Vector3 behindTheBall = targetObject.transform.position + fromGoalToBall;
+					botOffset = Vector3.ClampMagnitude (fromGoalToBall, botLength / 2.0f);
 					isBehindTheBall = GotoWayPoint (behindTheBall);
 				} else {
-					shootTheBall = !GotoWayPoint (targetObject.transform.position);
+					isBehindTheBall = !GotoWayPoint (ballPosition + botOffset);
 				}
 			}
 
 			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
-
 			// Check if the message is valid. The first message received after connecting with the EV3 is "Accept:EV340"
 			// indicating that the connection has been established. This is not a valid message.
 			if (strMessage != "") {
@@ -234,19 +245,22 @@ public class ReneB_script1 : MonoBehaviour
 							}
 						}
 						calibrated = true;
-
-						// Draw a wall in front of the robot when an object is detected.
-						var wallObject = GameObject.Find ("Wall");
-						MeshRenderer renderWall = wallObject.GetComponentInChildren<MeshRenderer> ();
-						wallObject.transform.position = rb.transform.position;
-						wallObject.transform.rotation = rb.transform.rotation;
-						// Place the wall in front of the robot at distanceToObject units.
-						wallObject.transform.Translate (0, 0, distanceToObject + 10); // +10 to compensate for robot length.
-						if (distanceToObject > 0 && distanceToObject < 30) {
-							renderWall.enabled = true;
-						} else {
-							renderWall.enabled = false;
+						if (!myEV3.simOnly && false) {
+							// Draw a wall in front of the robot when an object is detected.
+							// Do not do this in simulation mode as this wall might collide with the bot at distance 0.
+							var wallObject = GameObject.Find ("Wall");
+							MeshRenderer renderWall = wallObject.GetComponentInChildren<MeshRenderer> ();
+							wallObject.transform.position = rb.transform.position;
+							wallObject.transform.rotation = rb.transform.rotation;
+							// Place the wall in front of the robot at distanceToObject units.
+							wallObject.transform.Translate (0, 0, distanceToObject + 10); // +10 to compensate for robot length.
+							if (distanceToObject >= 0 && distanceToObject < 30) {
+								renderWall.enabled = true;
+							} else {
+								renderWall.enabled = false;
+							}
 						}
+
 					}
 				}
 			}
@@ -260,8 +274,8 @@ public class ReneB_script1 : MonoBehaviour
 		if (taskReady == 1) {
 			NavMeshPath path = new NavMeshPath ();
 			bool result = NavMesh.CalculatePath (rb.transform.position, position, NavMesh.AllAreas, path);
-			if (result && path.corners.Length > 1) {
-				float targetDistance = Vector3.Distance (rb.transform.position, path.corners [1]);
+			if (result && path.corners.Length > 1 && Vector3.Distance (rb.transform.position, position) > 10) {
+				float targetDistance = Math.Min(20.0f, Vector3.Distance (rb.transform.position, path.corners [1]));
 				Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
 				Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
 				var relativePos = path.corners [1] - rb.transform.position;
@@ -272,15 +286,13 @@ public class ReneB_script1 : MonoBehaviour
 				targetAngle = targetAnglePlus90 < targetAngleMin90 ? targetAngle : -targetAngle;
 				myEV3.SendMessage ("Move " + targetAngle.ToString () + " " + targetDistance.ToString () + " 30", "0"); // Move angle (-180 .. 180) distance (cm) power (0..100)
 				msPreviousTask = ms;
-			}
-			if (Vector3.Distance (rb.transform.position, position) < 5) {
-				lineRenderer.positionCount = 0;
-				finished = true;
-			} else {
 				lineRenderer.positionCount = path.corners.Length;
 				for (int i = 0; i < path.corners.Length; i++) {
 					lineRenderer.SetPosition (i, path.corners [i]);
-				}
+				}			}
+			else {
+				lineRenderer.positionCount = 0;
+				finished = true;
 			}
 		}
 		return finished;
