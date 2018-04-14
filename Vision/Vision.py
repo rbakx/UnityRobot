@@ -53,7 +53,7 @@ class VisionDetector(object):
 				# Change thresholds
 				# The default value of params.thresholdStep (10?) seems to work well.
 				# To speed processing up, increase to 20 or more.
-				#params.thresholdStep = 20
+				#params.thresholdStep = 10
 				params.minThreshold = 20
 				params.maxThreshold = 200
 
@@ -63,7 +63,7 @@ class VisionDetector(object):
 				# When filterByArea is set to True with a minArea > 0 this problem does not occur.
 				params.filterByArea = True
 				params.minArea = 100
-				params.maxArea = 100000
+				params.maxArea = 10000
 				# Filter by Circularity
 				params.filterByCircularity = True
 				params.minCircularity = 0.80
@@ -78,6 +78,7 @@ class VisionDetector(object):
 				# Detect blobs.
 				detector = cv2.SimpleBlobDetector_create(params)
 				keypoints = detector.detect(img_gray)
+				print("nof keypoints", len(keypoints))
 
 				# Start with illegal value, used for checking if blob data is valid.
 				blobSize, blobPosition = 1000,(0,0)

@@ -10,17 +10,17 @@ using Newtonsoft.Json;
 using EV3WifiLib;
 
 
-// Example script which serves as a proof of concept of the EV3 robot controlled from Unity, represented by a Bot object.
+// Example script which serves as a proof of concept of the EV3 bot controlled from Unity, represented by a Bot object.
 // In this simple example, the EV3 can be controlled using the WASD keys or the arrow keys.
 // It sends back sensor information from the gyro and motor encoders which is used to move the Bot object.
 // The scaling is such that one scale unit in Unity corresponds to 1 cm in the physical world.
-// The communication between Unity and the robot is done with EV3WifiLib.
-// The robot runs a TCP socket server and Unity a socket client, meaning the robot listens
+// The communication between Unity and the bot is done with EV3WifiLib.
+// The bot runs a TCP socket server and Unity a socket client, meaning the bot listens
 // to a specific port and Unity initiates the action by sending a request to this port.
 // Sending from Unity is done synchrounously as only short messages are sent and the call
 // only blocks until the data is sent, regardless whether or not the endpoint exists.
-// Receiving from the robot is done asynchrounously as receiving data back from the robot
-// after sending a request can take a while, depending on the server implementation on the robot.
+// Receiving from the bot is done asynchrounously as receiving data back from the bot
+// after sending a request can take a while, depending on the server implementation on the bot.
 
 
 static class Constants
@@ -60,14 +60,13 @@ public class BotController : MonoBehaviour
 	private bool isBehindTheBall = false;
 	private VisionData visionData = null;
 	private GameObject targetObject;
-	private Vector3 goalPosition = new Vector3 (-180.0f, 0.0f, 0.0f);
+	private Vector3 goalPosition;
 	private float xmin, xmax, zmin, zmax;
 	private float botLength;
 	private LineRenderer lineRenderer;
 	private Vector3 ballPosition;
-	private Vector3 botOffset = new Vector3 (0.0f, 0.0f, 0.0f);
 
-	// To indicate robot is ready for the next task.
+	// To indicate bot is ready for the next task.
 
 	void Start ()
 	{
@@ -82,8 +81,9 @@ public class BotController : MonoBehaviour
 		xmax = groundObject.GetComponent<Renderer> ().bounds.max.x;
 		zmin = groundObject.GetComponent<Renderer> ().bounds.min.z;
 		zmax = groundObject.GetComponent<Renderer> ().bounds.max.z;
-		botLength = rb.GetComponent<Renderer>().bounds.size.x;
+		botLength = rb.GetComponent<Renderer> ().bounds.size.x;
 		lineRenderer = GetComponent<LineRenderer> ();
+		goalPosition = GameObject.Find ("Goal").transform.position;
 	}
 
 	void Update ()
@@ -129,13 +129,13 @@ public class BotController : MonoBehaviour
 			rb.transform.position = startPosition;
 			rb.rotation = startRotation;
 			guiReset = false;
-			// Wait for robot to reset and flush the current message which contains pre-reset values.
+			// Wait for bot to reset and flush the current message which contains pre-reset values.
 			Thread.Sleep (500);
 			myEV3.ReceiveMessage ("EV3_OUTBOX0");
 			gotoTarget = false;
 			shootTheBall = false;
 			isBehindTheBall = false;
-
+			lineRenderer.positionCount = 0; // Erase the current path
 		}
 
 		if (myVision.isConnected) {
@@ -153,7 +153,7 @@ public class BotController : MonoBehaviour
 			
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
 		if (ms - msPrevious > Constants.TimeTickMs) {
-			// Below code is executed once per TimeTickMs. This to limit communication to physical robot.ScreenToWorldPoint
+			// Below code is executed once per TimeTickMs. This to limit communication to physical bot.ScreenToWorldPoint
 			// Read input keys. Because we get here once in so many calls of FixedUpdate we have to use key events which last long enough.
 			float moveHorizontal = Input.GetAxis ("Horizontal");
 			float moveVertical = Input.GetAxis ("Vertical");
@@ -194,22 +194,25 @@ public class BotController : MonoBehaviour
 				shootTheBall = true;
 				isBehindTheBall = false;
 			}
-				
+
 			if (gotoTarget) {
 				gotoTarget = !GotoWayPoint (targetObject.transform.position);
 			} else if (shootTheBall) {
-				if (Vector3.Distance (targetObject.transform.position, goalPosition) < 20) {
+				if (Vector3.Distance (targetObject.transform.position, goalPosition) < 10) {
 					shootTheBall = false;
 					isBehindTheBall = false;
 				} else if (!isBehindTheBall) {
 					ballPosition = targetObject.transform.position;
 					Vector3 fromGoalToBall = targetObject.transform.position - goalPosition;
-					fromGoalToBall = Vector3.ClampMagnitude (fromGoalToBall, 30);
+					fromGoalToBall = fromGoalToBall.normalized * 20.0f;
 					Vector3 behindTheBall = targetObject.transform.position + fromGoalToBall;
-					botOffset = Vector3.ClampMagnitude (fromGoalToBall, botLength / 2.0f);
 					isBehindTheBall = GotoWayPoint (behindTheBall);
 				} else {
-					isBehindTheBall = !GotoWayPoint (ballPosition + botOffset);
+					isBehindTheBall = !GotoWayPoint (ballPosition);
+					if (!isBehindTheBall) {
+						myEV3.SendMessage ("Move 0 -30 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
+						msPreviousTask = ms;
+					}
 				}
 			}
 
@@ -220,8 +223,8 @@ public class BotController : MonoBehaviour
 				string[] data = strMessage.Split (' ');
 				if (data.Length == 4) {
 					if (int.TryParse (data [0], out taskReady) && float.TryParse (data [1], out angleMoved) && float.TryParse (data [2], out distanceMoved) && float.TryParse (data [3], out distanceToObject)) {
-						// If a new task just has been sent to the robot, the taskReady will still be on '1'.
-						// It takes about 3 time ticks of 100 ms to receive taskReady = 0 back from the robot.
+						// If a new task just has been sent to the bot, the taskReady will still be on '1'.
+						// It takes about 3 time ticks of 100 ms to receive taskReady = 0 back from the bot.
 						// Therefore we force taskReady to 0 for 5 time ticks after the task has been sent.
 						if (ms - msPreviousTask < 5 * Constants.TimeTickMs) {
 							taskReady = 0;
@@ -246,14 +249,14 @@ public class BotController : MonoBehaviour
 						}
 						calibrated = true;
 						if (!myEV3.simOnly && false) {
-							// Draw a wall in front of the robot when an object is detected.
+							// Draw a wall in front of the bot when an object is detected.
 							// Do not do this in simulation mode as this wall might collide with the bot at distance 0.
 							var wallObject = GameObject.Find ("Wall");
 							MeshRenderer renderWall = wallObject.GetComponentInChildren<MeshRenderer> ();
 							wallObject.transform.position = rb.transform.position;
 							wallObject.transform.rotation = rb.transform.rotation;
-							// Place the wall in front of the robot at distanceToObject units.
-							wallObject.transform.Translate (0, 0, distanceToObject + 10); // +10 to compensate for robot length.
+							// Place the wall in front of the bot at distanceToObject units.
+							wallObject.transform.Translate (0, 0, distanceToObject + 10); // +10 to compensate for bot length.
 							if (distanceToObject >= 0 && distanceToObject < 30) {
 								renderWall.enabled = true;
 							} else {
@@ -274,26 +277,29 @@ public class BotController : MonoBehaviour
 		if (taskReady == 1) {
 			NavMeshPath path = new NavMeshPath ();
 			bool result = NavMesh.CalculatePath (rb.transform.position, position, NavMesh.AllAreas, path);
-			if (result && path.corners.Length > 1 && Vector3.Distance (rb.transform.position, position) > 10) {
-				float targetDistance = Math.Min(20.0f, Vector3.Distance (rb.transform.position, path.corners [1]));
-				Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
-				Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
-				var relativePos = path.corners [1] - rb.transform.position;
-				var relativeRot = Quaternion.LookRotation (relativePos);
-				float targetAngle = Quaternion.Angle (rb.transform.rotation, relativeRot);
-				float targetAnglePlus90 = Quaternion.Angle (rb.transform.rotation * rotPlus90, relativeRot);
-				float targetAngleMin90 = Quaternion.Angle (rb.transform.rotation * rotMin90, relativeRot);
-				targetAngle = targetAnglePlus90 < targetAngleMin90 ? targetAngle : -targetAngle;
-				myEV3.SendMessage ("Move " + targetAngle.ToString () + " " + targetDistance.ToString () + " 30", "0"); // Move angle (-180 .. 180) distance (cm) power (0..100)
-				msPreviousTask = ms;
-				lineRenderer.positionCount = path.corners.Length;
-				for (int i = 0; i < path.corners.Length; i++) {
-					lineRenderer.SetPosition (i, path.corners [i]);
-				}			}
-			else {
-				lineRenderer.positionCount = 0;
-				finished = true;
+			if (result && path.corners.Length > 1) {
+				if (Vector3.Distance (rb.transform.position, position) > 10) {
+					float targetDistance = Math.Min (20.0f, Vector3.Distance (rb.transform.position, path.corners [1]));
+					Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
+					Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
+					var relativePos = path.corners [1] - rb.transform.position;
+					var relativeRot = Quaternion.LookRotation (relativePos);
+					float targetAngle = Quaternion.Angle (rb.transform.rotation, relativeRot);
+					float targetAnglePlus90 = Quaternion.Angle (rb.transform.rotation * rotPlus90, relativeRot);
+					float targetAngleMin90 = Quaternion.Angle (rb.transform.rotation * rotMin90, relativeRot);
+					targetAngle = targetAnglePlus90 < targetAngleMin90 ? targetAngle : -targetAngle;
+					myEV3.SendMessage ("Move " + targetAngle.ToString () + " " + targetDistance.ToString () + " 30", "0"); // Move angle (-180 .. 180) distance (cm) power (0..100)
+					msPreviousTask = ms;
+					lineRenderer.positionCount = path.corners.Length;
+					for (int i = 0; i < path.corners.Length; i++) {
+						lineRenderer.SetPosition (i, path.corners [i]);
+					}
+				} else {
+					lineRenderer.positionCount = 0;
+					finished = true;
+				}
 			}
+
 		}
 		return finished;
 	}
@@ -378,10 +384,10 @@ public class EV3WifiOrSimulation
 	private float distanceToObject = 0.0f;
 	private float angleToMoveRemaining = 0.0f;
 	private float distanceToMoveRemaining = 0.0f;
-	float angleToMovePerTimeTick, distanceToMovePerTimeTick;
-	float angleToMove, distanceToMove, pwr;
-	int taskReady = 1;
-	// To indicate robot is ready for the next task
+	private float angleToMovePerTimeTick, distanceToMovePerTimeTick;
+	private float angleToMove, distanceToMove, pwr;
+	private int taskReady = 1;
+	// To indicate bot is ready for the next task
 
 	public EV3WifiOrSimulation ()
 	{
@@ -433,14 +439,14 @@ public class EV3WifiOrSimulation
 	{
 		// Indicate new message has arrived.
 		newMessageArrived = true;
-		// Store msg in lastMessageSent so it can ve handled in ReceiveMessageSim to simulate robot movement.
+		// Store msg in lastMessageSent so it can ve handled in ReceiveMessageSim to simulate bot movement.
 		lastMessageSent = msg;
 	}
 
-	// ReceiveMessageSim simulates receiving a message from the robot.
-	// It uses the message sent with SendMessageSim to determine the movement of the robot.
+	// ReceiveMessageSim simulates receiving a message from the bot.
+	// It uses the message sent with SendMessageSim to determine the movement of the bot.
 	// This message contains a distanceToMove, angleToMove and pwr.
-	// The simulated robot first turns by angleToMove degrees and then moves straight for distanceToMove units with power pwr.
+	// The simulated bot first turns by angleToMove degrees and then moves straight for distanceToMove units with power pwr.
 	private string ReceiveMessageSim (string mbox)
 	{
 		if (newMessageArrived) {
@@ -451,10 +457,11 @@ public class EV3WifiOrSimulation
 				angleToMoveRemaining = angleToMove != 0 ? Math.Abs (angleToMove) - Math.Abs (angleToMovePerTimeTick) : 0;
 				distanceToMoveRemaining = distanceToMove != 0 ? Math.Abs (distanceToMove) - Math.Abs (distanceToMovePerTimeTick) : 0;
 				newMessageArrived = false;
-				taskReady = 0; // Indicate robot is not ready for the next task.
+				taskReady = 0; // Indicate bot is not ready for the next task.
 			} else if (messageStrings [0] == "Reset") {
 				angleMoved = 0.0f;
 				distanceMoved = 0.0f;
+				taskReady = 1; // Indicate bot is ready for the next task.
 			}
 		} else if (angleToMove != 0 || distanceToMove != 0) {
 			if (angleToMoveRemaining > 0) {
@@ -479,7 +486,7 @@ public class EV3WifiOrSimulation
 			}
 			
 		} else {
-			taskReady = 1; // Indicate robot is ready for the next task.
+			taskReady = 1; // Indicate bot is ready for the next task.
 		}
 		return taskReady.ToString () + " " + angleMoved.ToString () + " " + distanceMoved.ToString () + " " + distanceToObject.ToString ();
 	}
