@@ -32,7 +32,8 @@ static class Constants
 	// 3 degrees per pwr per second, e.g. pwr = 30 -> 90 degrees per second.
 	public const float PowerToAnglePerTimeTick = 3.0f * TimeTickMs / 1000.0f;
 	// When waypoint is reached within this distance it is considered reached.
-	public const float WayPointAccuracy = 5.0f;
+	// A accuracy of 5 cm should be possible but due to the current accuracy / video update speed of the EV3 we set it to 10 cm.
+	public const float WayPointAccuracy = 10.0f;
 	// Recalculate path every RecalculatePathDistance cm.
 	public const float RecalculatePathDistance = 20.0f;
 	// Distance behind the ball to start the shot. Keep this a bit shorther than RecalculatePathDistance.
@@ -73,12 +74,13 @@ public class BotController : MonoBehaviour
 	private VisionData visionData = null;
 	private GameObject targetObject;
 	private Vector3 goalPosition;
+	private Vector3 behindGoalPosition;
 	private float xmin, xmax, zmin, zmax;
 	private float botLength;
 	private float ballRadius;
 	private LineRenderer lineRenderer;
 	private Vector3 ballPosition;
-	private Vector3 fromGoalToBall2DNorm;
+	private Vector3 fromBehindGoalToBall2DNorm;
 
 	// To indicate bot is ready for the next task.
 
@@ -101,11 +103,13 @@ public class BotController : MonoBehaviour
 		rb.transform.localScale = new Vector3 (15.0f, 12.5f, 26.0f);
 		lineRenderer = GetComponent<LineRenderer> ();
 		goalPosition = GameObject.Find ("Goal").transform.position;
+		// Small correction to put target just behind the goal line
+		behindGoalPosition = goalPosition + new Vector3(-10.0f,0.0f,0.0f);
 	}
 
 	void Update ()
 	{
-	
+
 	}
 
 	void FixedUpdate ()
@@ -215,21 +219,21 @@ public class BotController : MonoBehaviour
 			if (gotoTarget) {
 				gotoTarget = !GotoWayPoint (targetObject.transform.position);
 			} else if (shootTheBall) {
-				if (targetObject.transform.position.x < goalPosition.x) {
-					isBehindTheBall = false;
-				} else if (!isBehindTheBall) {
+				if (!isBehindTheBall) {
 					ballPosition = targetObject.transform.position;
-					Vector3 fromGoalToBall2D = ballPosition - goalPosition;
-					// Make 2D
-					fromGoalToBall2D.y = 0;
-					fromGoalToBall2DNorm = fromGoalToBall2D.normalized;
-					isBehindTheBall = GotoWayPoint (ballPosition + fromGoalToBall2DNorm * (botLength / 2 + ballRadius + Constants.BehindTheBallDistance));
+					if (ballPosition.x > goalPosition.x) {
+						Vector3 fromBehindGoalToBall2D = ballPosition - behindGoalPosition;
+						// Make 2D
+						fromBehindGoalToBall2D.y = 0;
+						fromBehindGoalToBall2DNorm = fromBehindGoalToBall2D.normalized;
+						isBehindTheBall = GotoWayPoint (ballPosition + fromBehindGoalToBall2DNorm * (botLength / 2 + ballRadius + Constants.BehindTheBallDistance));
+					}
 				} else {
 					// No go to the ball to shoot. The waypoint is calculated such that when Constants.ShootingDistance is zero,
 					// the front of the bot just touches the ball.
-					isBehindTheBall = !GotoWayPoint (ballPosition + fromGoalToBall2DNorm * (botLength / 2 + ballRadius + Constants.ShootingDistance));
+					isBehindTheBall = !GotoWayPoint (ballPosition + fromBehindGoalToBall2DNorm * (botLength / 2 + ballRadius + Constants.ShootingDistance));
 					if (!isBehindTheBall) {
-						myEV3.SendMessage ("Move 0 -30 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
+						myEV3.SendMessage ("Move 0 -20 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
 						msPreviousTask = ms;
 					}
 				}
