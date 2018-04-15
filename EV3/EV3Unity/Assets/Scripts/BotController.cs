@@ -25,12 +25,24 @@ using EV3WifiLib;
 
 static class Constants
 {
-	public const int TimeTickMs = 100;
 	// 100 ms
-	public const float PowerToDistancePerTimeTick = 0.5f * TimeTickMs / 1000.0f;
+	public const int TimeTickMs = 100;
 	// 0.5 cm per pwr per second, e.g. pwr = 30 -> 15 cm per second.
-	public const float PowerToAnglePerTimeTick = 3.0f * TimeTickMs / 1000.0f;
+	public const float PowerToDistancePerTimeTick = 0.5f * TimeTickMs / 1000.0f;
 	// 3 degrees per pwr per second, e.g. pwr = 30 -> 90 degrees per second.
+	public const float PowerToAnglePerTimeTick = 3.0f * TimeTickMs / 1000.0f;
+	// When waypoint is reached within this distance it is considered reached.
+	public const float WayPointAccuracy = 5.0f;
+	// Recalculate path every RecalculatePathDistance cm.
+	public const float RecalculatePathDistance = 20.0f;
+	// Distance behind the ball to start the shot. Keep this a bit shorther than RecalculatePathDistance.
+	// Otherwise during the shot the path is recalculated which can result in hitting the ball twice.
+	// When BehindTheBallDistance is zero, the bot just touches the ball.
+	public const float BehindTheBallDistance = 10.0f;
+	// Distance for positioning infront of the ball before shooting.
+	// If the bot has to drive into the ball to shoot the ShootingDistance must be negative!
+	// When ShootingDistance is zero, the bot just touches the ball.
+	public const float ShootingDistance = -10.0f;
 }
 
 
@@ -63,8 +75,10 @@ public class BotController : MonoBehaviour
 	private Vector3 goalPosition;
 	private float xmin, xmax, zmin, zmax;
 	private float botLength;
+	private float ballRadius;
 	private LineRenderer lineRenderer;
 	private Vector3 ballPosition;
+	private Vector3 fromGoalToBallNorm;
 
 	// To indicate bot is ready for the next task.
 
@@ -81,7 +95,10 @@ public class BotController : MonoBehaviour
 		xmax = groundObject.GetComponent<Renderer> ().bounds.max.x;
 		zmin = groundObject.GetComponent<Renderer> ().bounds.min.z;
 		zmax = groundObject.GetComponent<Renderer> ().bounds.max.z;
-		botLength = rb.GetComponent<Renderer> ().bounds.size.x;
+		// botLength and ballRadius are used to position the Bot behind the ball before shooring.
+		botLength = rb.transform.localScale.z;
+		ballRadius = GameObject.Find ("Ball").transform.localScale.x / 2.0f;
+		rb.transform.localScale = new Vector3 (15.0f, 12.5f, 26.0f);
 		lineRenderer = GetComponent<LineRenderer> ();
 		goalPosition = GameObject.Find ("Goal").transform.position;
 	}
@@ -198,17 +215,18 @@ public class BotController : MonoBehaviour
 			if (gotoTarget) {
 				gotoTarget = !GotoWayPoint (targetObject.transform.position);
 			} else if (shootTheBall) {
-				if (Vector3.Distance (targetObject.transform.position, goalPosition) < 10) {
+				if (targetObject.transform.position.x < goalPosition.x) {
 					shootTheBall = false;
 					isBehindTheBall = false;
 				} else if (!isBehindTheBall) {
 					ballPosition = targetObject.transform.position;
-					Vector3 fromGoalToBall = targetObject.transform.position - goalPosition;
-					fromGoalToBall = fromGoalToBall.normalized * 20.0f;
-					Vector3 behindTheBall = targetObject.transform.position + fromGoalToBall;
-					isBehindTheBall = GotoWayPoint (behindTheBall);
+					Vector3 fromGoalToBall = ballPosition - goalPosition;
+					fromGoalToBallNorm = fromGoalToBall.normalized;
+					isBehindTheBall = GotoWayPoint (ballPosition + fromGoalToBallNorm * (botLength / 2 + ballRadius + Constants.BehindTheBallDistance));
 				} else {
-					isBehindTheBall = !GotoWayPoint (ballPosition);
+					// No go to the ball to shoot. The waypoint is calculated such that when Constants.ShootingDistance is zero,
+					// the front of the bot just touches the ball.
+					isBehindTheBall = !GotoWayPoint (ballPosition + fromGoalToBallNorm * (botLength / 2 + ballRadius + Constants.ShootingDistance));
 					if (!isBehindTheBall) {
 						myEV3.SendMessage ("Move 0 -30 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
 						msPreviousTask = ms;
@@ -274,15 +292,19 @@ public class BotController : MonoBehaviour
 	bool GotoWayPoint (Vector3 position)
 	{
 		bool finished = false;
+		// Make heigth of source and destination zero else the distance calculations below go wrong.
+		Vector3 botPosition = rb.transform.position;
+		position.y = 0;
+		botPosition.y = 0;
 		if (taskReady == 1) {
 			NavMeshPath path = new NavMeshPath ();
-			bool result = NavMesh.CalculatePath (rb.transform.position, position, NavMesh.AllAreas, path);
+			bool result = NavMesh.CalculatePath (botPosition, position, NavMesh.AllAreas, path);
 			if (result && path.corners.Length > 1) {
-				if (Vector3.Distance (rb.transform.position, position) > 10) {
-					float targetDistance = Math.Min (20.0f, Vector3.Distance (rb.transform.position, path.corners [1]));
+				if (Vector3.Distance (botPosition, position) > Constants.WayPointAccuracy) {
+					float targetDistance = Math.Min (Constants.RecalculatePathDistance, Vector3.Distance (botPosition, path.corners [1]));
 					Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
 					Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
-					var relativePos = path.corners [1] - rb.transform.position;
+					var relativePos = path.corners [1] - botPosition;
 					var relativeRot = Quaternion.LookRotation (relativePos);
 					float targetAngle = Quaternion.Angle (rb.transform.rotation, relativeRot);
 					float targetAnglePlus90 = Quaternion.Angle (rb.transform.rotation * rotPlus90, relativeRot);
