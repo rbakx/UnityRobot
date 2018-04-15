@@ -78,7 +78,7 @@ public class BotController : MonoBehaviour
 	private float ballRadius;
 	private LineRenderer lineRenderer;
 	private Vector3 ballPosition;
-	private Vector3 fromGoalToBallNorm;
+	private Vector3 fromGoalToBall2DNorm;
 
 	// To indicate bot is ready for the next task.
 
@@ -220,13 +220,15 @@ public class BotController : MonoBehaviour
 					isBehindTheBall = false;
 				} else if (!isBehindTheBall) {
 					ballPosition = targetObject.transform.position;
-					Vector3 fromGoalToBall = ballPosition - goalPosition;
-					fromGoalToBallNorm = fromGoalToBall.normalized;
-					isBehindTheBall = GotoWayPoint (ballPosition + fromGoalToBallNorm * (botLength / 2 + ballRadius + Constants.BehindTheBallDistance));
+					Vector3 fromGoalToBall2D = ballPosition - goalPosition;
+					// Make 2D
+					fromGoalToBall2D.y = 0;
+					fromGoalToBall2DNorm = fromGoalToBall2D.normalized;
+					isBehindTheBall = GotoWayPoint (ballPosition + fromGoalToBall2DNorm * (botLength / 2 + ballRadius + Constants.BehindTheBallDistance));
 				} else {
 					// No go to the ball to shoot. The waypoint is calculated such that when Constants.ShootingDistance is zero,
 					// the front of the bot just touches the ball.
-					isBehindTheBall = !GotoWayPoint (ballPosition + fromGoalToBallNorm * (botLength / 2 + ballRadius + Constants.ShootingDistance));
+					isBehindTheBall = !GotoWayPoint (ballPosition + fromGoalToBall2DNorm * (botLength / 2 + ballRadius + Constants.ShootingDistance));
 					if (!isBehindTheBall) {
 						myEV3.SendMessage ("Move 0 -30 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
 						msPreviousTask = ms;
@@ -271,7 +273,11 @@ public class BotController : MonoBehaviour
 							// Do not do this in simulation mode as this wall might collide with the bot at distance 0.
 							var wallObject = GameObject.Find ("Wall");
 							MeshRenderer renderWall = wallObject.GetComponentInChildren<MeshRenderer> ();
-							wallObject.transform.position = rb.transform.position;
+							Vector3 vec = new Vector3 ();
+							vec.x = rb.transform.position.x;
+							vec.y = wallObject.transform.position.y; // Original height.
+							vec.z = rb.transform.position.z;
+							wallObject.transform.position = vec;
 							wallObject.transform.rotation = rb.transform.rotation;
 							// Place the wall in front of the bot at distanceToObject units.
 							wallObject.transform.Translate (0, 0, distanceToObject + 10); // +10 to compensate for bot length.
