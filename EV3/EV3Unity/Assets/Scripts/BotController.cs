@@ -216,7 +216,6 @@ public class BotController : MonoBehaviour
 				gotoTarget = !GotoWayPoint (targetObject.transform.position);
 			} else if (shootTheBall) {
 				if (targetObject.transform.position.x < goalPosition.x) {
-					shootTheBall = false;
 					isBehindTheBall = false;
 				} else if (!isBehindTheBall) {
 					ballPosition = targetObject.transform.position;
