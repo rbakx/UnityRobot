@@ -23,7 +23,7 @@ using EV3WifiLib;
 // after sending a request can take a while, depending on the server implementation on the bot.
 
 
-static class Constants
+static class GeneralConstants
 {
 	// 100 ms
 	public const int TimeTickMs = 100;
@@ -32,8 +32,8 @@ static class Constants
 	// 3 degrees per pwr per second, e.g. pwr = 30 -> 90 degrees per second.
 	public const float PowerToAnglePerTimeTick = 3.0f * TimeTickMs / 1000.0f;
 	// When waypoint is reached within this distance it is considered reached.
-	// A accuracy of 5 cm should be possible but due to the current accuracy / video update speed of the EV3 we set it to 10 cm.
-	public const float WayPointAccuracy = 10.0f;
+	// A accuracy of 5 cm is possible but in case the bot does not seem to reach its waypoints, set it to 10.
+	public const float WayPointAccuracy = 5.0f;
 	// Recalculate path every RecalculatePathDistance cm.
 	public const float RecalculatePathDistance = 20.0f;
 	// Distance behind the ball to start the shot. Keep this a bit shorther than RecalculatePathDistance.
@@ -46,11 +46,24 @@ static class Constants
 	public const float ShootingDistance = -10.0f;
 }
 
+static class CameraConstants
+{
+	// Camera viewing angles.
+	public const float MaxViewingAngleLeft = -45.0f;
+	public const float MaxViewingAngleRight = 45.0f;
+	public const float MaxViewingAngleTop = 25.3125f;
+	public const float MaxViewingAngleBottom = -25.3125f;
+	// Height of camera above ground.
+	public const float Height = 250.0f;
+}
+
 
 public class BotController : MonoBehaviour
 {
+	public VisionData visionData = null;
 	private EV3WifiOrSimulation myEV3;
 	private VisionClient myVision;
+	private VisionCamera myVisionCamera;
 	private string ipAddress = "IP address";
 	private Rigidbody rb;
 	private Vector3 startPosition;
@@ -60,7 +73,7 @@ public class BotController : MonoBehaviour
 	private float distanceToObject = 0.0f;
 	private float angleMovedPrevious = 0.0f;
 	private float distanceMovedPrevious = 0.0f;
-	private long ms, msPrevious, msPreviousTask = 0;
+	private long ms, msPrevious, msPreviousTask, msStartTaskReadyExtension = 0;
 	private bool calibrated = false;
 	private bool guiConnectEV3 = false;
 	private bool guiDisconnectEV3 = false;
@@ -68,15 +81,15 @@ public class BotController : MonoBehaviour
 	private bool guiDisconnectVision = false;
 	private bool guiReset = true;
 	private int taskReady = 1;
+	private int taskReadyPrevious = 1;
 	private bool gotoTarget = false;
 	private bool shootTheBall = false;
 	private bool isBehindTheBall = false;
-	private VisionData visionData = null;
 	private GameObject targetObject;
 	private Vector3 goalPosition;
 	private Vector3 behindGoalPosition;
-	private float xmin, xmax, zmin, zmax;
 	private float botLength;
+	private float botHeight;
 	private float ballRadius;
 	private LineRenderer lineRenderer;
 	private Vector3 ballPosition;
@@ -89,16 +102,13 @@ public class BotController : MonoBehaviour
 		rb = GetComponent<Rigidbody> ();
 		myEV3 = new EV3WifiOrSimulation ();
 		myVision = new VisionClient ();
+		myVisionCamera = new VisionCamera ();
 		startPosition = rb.transform.position;
 		startRotation = rb.rotation;
 		targetObject = GameObject.Find ("Ball");
-		var groundObject = GameObject.Find ("Ground");
-		xmin = groundObject.GetComponent<Renderer> ().bounds.min.x;
-		xmax = groundObject.GetComponent<Renderer> ().bounds.max.x;
-		zmin = groundObject.GetComponent<Renderer> ().bounds.min.z;
-		zmax = groundObject.GetComponent<Renderer> ().bounds.max.z;
-		// botLength and ballRadius are used to position the Bot behind the ball before shooring.
+		// bBot and ball dimensions are used to position the Bot behind the ball before shooring and to determine marker height.
 		botLength = rb.transform.localScale.z;
+		botHeight = rb.transform.localScale.y;
 		ballRadius = GameObject.Find ("Ball").transform.localScale.x / 2.0f;
 		rb.transform.localScale = new Vector3 (15.0f, 12.5f, 26.0f);
 		lineRenderer = GetComponent<LineRenderer> ();
@@ -162,18 +172,13 @@ public class BotController : MonoBehaviour
 		if (myVision.isConnected) {
 			string msg = myVision.ReceiveMessage ();
 			visionData = JsonConvert.DeserializeObject<VisionData> (msg);
-			Vector3 vec = new Vector3 ();
-			vec.x = map (visionData.ball [1], 0, visionData.videoSize [0], xmin, xmax);
-			vec.y = targetObject.transform.position.y; // Original height.
-			vec.z = map (visionData.ball [2], visionData.videoSize [1], 0, zmin, zmax);
-			targetObject.transform.position = vec;
-
+			targetObject.transform.position = myVisionCamera.CameraToWorldCoordinates (new Vector3(visionData.ball [1], ballRadius, visionData.ball [2]));
 		} else {
 			visionData = null;
 		}
 			
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
-		if (ms - msPrevious > Constants.TimeTickMs) {
+		if (ms - msPrevious > GeneralConstants.TimeTickMs) {
 			// Below code is executed once per TimeTickMs. This to limit communication to physical bot.ScreenToWorldPoint
 			// Read input keys. Because we get here once in so many calls of FixedUpdate we have to use key events which last long enough.
 			float moveHorizontal = Input.GetAxis ("Horizontal");
@@ -223,15 +228,15 @@ public class BotController : MonoBehaviour
 					ballPosition = targetObject.transform.position;
 					if (ballPosition.x > goalPosition.x) {
 						Vector3 fromBehindGoalToBall2D = ballPosition - behindGoalPosition;
-						// Make 2D
+						// Make 2D.
 						fromBehindGoalToBall2D.y = 0;
 						fromBehindGoalToBall2DNorm = fromBehindGoalToBall2D.normalized;
-						isBehindTheBall = GotoWayPoint (ballPosition + fromBehindGoalToBall2DNorm * (botLength / 2 + ballRadius + Constants.BehindTheBallDistance));
+						isBehindTheBall = GotoWayPoint (ballPosition + fromBehindGoalToBall2DNorm * (botLength / 2 + ballRadius + GeneralConstants.BehindTheBallDistance));
 					}
 				} else {
-					// No go to the ball to shoot. The waypoint is calculated such that when Constants.ShootingDistance is zero,
+					// No go to the ball to shoot. The waypoint is calculated such that when GeneralConstants.ShootingDistance is zero,
 					// the front of the bot just touches the ball.
-					isBehindTheBall = !GotoWayPoint (ballPosition + fromBehindGoalToBall2DNorm * (botLength / 2 + ballRadius + Constants.ShootingDistance));
+					isBehindTheBall = !GotoWayPoint (ballPosition + fromBehindGoalToBall2DNorm * (botLength / 2 + ballRadius + GeneralConstants.ShootingDistance));
 					if (!isBehindTheBall) {
 						myEV3.SendMessage ("Move 0 -20 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
 						msPreviousTask = ms;
@@ -245,13 +250,29 @@ public class BotController : MonoBehaviour
 			if (strMessage != "") {
 				string[] data = strMessage.Split (' ');
 				if (data.Length == 4) {
-					if (int.TryParse (data [0], out taskReady) && float.TryParse (data [1], out angleMoved) && float.TryParse (data [2], out distanceMoved) && float.TryParse (data [3], out distanceToObject)) {
+					int taskReadyDirect;
+					if (int.TryParse (data [0], out taskReadyDirect) && float.TryParse (data [1], out angleMoved) && float.TryParse (data [2], out distanceMoved) && float.TryParse (data [3], out distanceToObject)) {
 						// If a new task just has been sent to the bot, the taskReady will still be on '1'.
 						// It takes about 3 time ticks of 100 ms to receive taskReady = 0 back from the bot.
 						// Therefore we force taskReady to 0 for 5 time ticks after the task has been sent.
-						if (ms - msPreviousTask < 5 * Constants.TimeTickMs) {
+						if (ms - msPreviousTask < 5 * GeneralConstants.TimeTickMs) {
+							taskReadyDirect = 0;
+						}
+
+						// Delay taskReady going from 0 to 1.
+						// This is needed when the taskReady message of a physical bot arrives earlier than the position update of the visionData.
+						if (taskReadyDirect == 1) {
+							if (taskReadyPrevious == 0) {
+								taskReady = 0;
+								msStartTaskReadyExtension = ms;
+							} else if (ms - msStartTaskReadyExtension > 500) {
+								taskReady = 1;
+							}
+						} else {
 							taskReady = 0;
 						}
+						taskReadyPrevious = taskReadyDirect;
+
 						float distanceMovedDelta = distanceMoved - distanceMovedPrevious;
 						float angleMovedDelta = angleMoved - angleMovedPrevious;
 						distanceMovedPrevious = distanceMoved;
@@ -262,11 +283,7 @@ public class BotController : MonoBehaviour
 								rb.MoveRotation (rb.rotation * rot);
 								rb.MovePosition (rb.transform.position + distanceMovedDelta * rb.transform.forward);
 							} else if (visionData.bot1 [0] <= 360) {
-								Vector3 vec = new Vector3 ();
-								vec.x = map (visionData.bot1 [1], 0, visionData.videoSize [0], xmin, xmax);
-								vec.y = rb.transform.position.y; // Original height.
-								vec.z = map (visionData.bot1 [2], visionData.videoSize [1], 0, zmin, zmax);
-								rb.transform.position = vec;
+								rb.transform.position = myVisionCamera.CameraToWorldCoordinates (new Vector3(visionData.bot1 [1], botHeight, visionData.bot1 [2]));;
 								rb.rotation = Quaternion.Euler (0, visionData.bot1 [0], 0);
 							}
 						}
@@ -309,8 +326,8 @@ public class BotController : MonoBehaviour
 			NavMeshPath path = new NavMeshPath ();
 			bool result = NavMesh.CalculatePath (botPosition, position, NavMesh.AllAreas, path);
 			if (result && path.corners.Length > 1) {
-				if (Vector3.Distance (botPosition, position) > Constants.WayPointAccuracy) {
-					float targetDistance = Math.Min (Constants.RecalculatePathDistance, Vector3.Distance (botPosition, path.corners [1]));
+				if (Vector3.Distance (botPosition, position) > GeneralConstants.WayPointAccuracy) {
+					float targetDistance = Math.Min (GeneralConstants.RecalculatePathDistance, Vector3.Distance (botPosition, path.corners [1]));
 					Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
 					Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
 					var relativePos = path.corners [1] - botPosition;
@@ -343,29 +360,29 @@ public class BotController : MonoBehaviour
 		GUIStyle styleButton = new GUIStyle (GUI.skin.button);
 		styleButton.fontSize = 12;
 		if (myEV3.isConnected == false) {
-			styleButton.normal.textColor = Color.red;
+			styleButton.normal.textColor = UnityEngine.Color.red;
 			if (GUILayout.Button ("Connect EV3", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
 				guiConnectEV3 = true;
 			}
 		} else if (myEV3.isConnected == true) {
-			styleButton.normal.textColor = Color.green;
+			styleButton.normal.textColor = UnityEngine.Color.green;
 			if (GUILayout.Button ("Disconnect EV3", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
 				guiDisconnectEV3 = true;
 			}
 		}
 		if (myVision.isConnected == false) {
-			styleButton.normal.textColor = Color.red;
+			styleButton.normal.textColor = UnityEngine.Color.red;
 			if (GUILayout.Button ("Connect vision", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
 				guiConnectVision = true;
 			}
 		} else if (myVision.isConnected == true) {
-			styleButton.normal.textColor = Color.green;
+			styleButton.normal.textColor = UnityEngine.Color.green;
 			if (GUILayout.Button ("Disconnect vision", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
 				guiDisconnectVision = true;
 			}
 		}
 
-		styleButton.normal.textColor = Color.red;
+		styleButton.normal.textColor = UnityEngine.Color.red;
 		if (GUILayout.Button ("Reset", styleButton, GUILayout.Width (100), GUILayout.Height (25))) {
 			guiReset = true;
 		}
@@ -378,12 +395,7 @@ public class BotController : MonoBehaviour
 			GUILayout.Label ("Physical mode", styleLabel);
 		}
 	}
-
-	float map (float s, float a1, float a2, float b1, float b2)
-	{
-		return b1 + (s - a1) * (b2 - b1) / (a2 - a1);
-	}
-
+		
 	void OnApplicationQuit ()
 	{
 		if (myVision.isConnected) {
@@ -396,10 +408,45 @@ public class BotController : MonoBehaviour
 }
 
 public class VisionData
-{
+{    
 	public float[] videoSize = { 0.0f, 0.0f };
 	public float[] bot1 = { 0.0f, 0.0f, 0.0f };
 	public float[] ball = { 0.0f, 0.0f, 0.0f };
+}
+
+public class VisionCamera
+{
+	private GameObject bot;
+	private VisionData visionData;
+
+	public VisionCamera()
+	{
+		bot = GameObject.Find ("Bot");
+	}
+
+	public Vector3 CameraToWorldCoordinates(Vector3 pCamera)
+	{
+		visionData = bot.GetComponent<BotController> ().visionData;
+
+		Vector3 pWorld = new Vector3();
+		float angleX = map (pCamera.x, 0, visionData.videoSize [0], CameraConstants.MaxViewingAngleLeft, CameraConstants.MaxViewingAngleRight);
+		float angleZ = map (pCamera.z, 0, visionData.videoSize [1], CameraConstants.MaxViewingAngleTop, CameraConstants.MaxViewingAngleBottom);
+		float tanX = (float) Math.Tan (ConvertToRadians (angleX));
+		float tanZ = (float) Math.Tan (ConvertToRadians (angleZ));
+		pWorld.x = (CameraConstants.Height - pCamera.y) * tanX;
+		pWorld.z = (CameraConstants.Height - pCamera.y) * tanZ;
+		return pWorld;
+	}
+
+	private float map (float s, float a1, float a2, float b1, float b2)
+	{
+		return b1 + (s - a1) * (b2 - b1) / (a2 - a1);
+	}
+
+	private float ConvertToRadians(float angle)
+	{
+		return ((float) Math.PI / 180) * angle;
+	}
 
 }
 
@@ -483,8 +530,8 @@ public class EV3WifiOrSimulation
 		if (newMessageArrived) {
 			string[] messageStrings = lastMessageSent.Split (' ');
 			if (messageStrings [0] == "Move" && float.TryParse (messageStrings [1], out angleToMove) && float.TryParse (messageStrings [2], out distanceToMove) && float.TryParse (messageStrings [3], out pwr)) {
-				angleToMovePerTimeTick = pwr * (angleToMove > 0 ? Constants.PowerToAnglePerTimeTick : -Constants.PowerToAnglePerTimeTick);
-				distanceToMovePerTimeTick = pwr * (distanceToMove > 0 ? Constants.PowerToDistancePerTimeTick : -Constants.PowerToDistancePerTimeTick);
+				angleToMovePerTimeTick = pwr * (angleToMove > 0 ? GeneralConstants.PowerToAnglePerTimeTick : -GeneralConstants.PowerToAnglePerTimeTick);
+				distanceToMovePerTimeTick = pwr * (distanceToMove > 0 ? GeneralConstants.PowerToDistancePerTimeTick : -GeneralConstants.PowerToDistancePerTimeTick);
 				angleToMoveRemaining = angleToMove != 0 ? Math.Abs (angleToMove) - Math.Abs (angleToMovePerTimeTick) : 0;
 				distanceToMoveRemaining = distanceToMove != 0 ? Math.Abs (distanceToMove) - Math.Abs (distanceToMovePerTimeTick) : 0;
 				newMessageArrived = false;
