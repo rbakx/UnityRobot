@@ -5,6 +5,18 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Text;
 
+
+// ***** Description *****
+// This is the Vision client which connects to the Python Vision server.
+// This Vision client receives vision data from the Vision server.
+
+
+static class VisionClientConstants
+{
+	public const int PortNumber = 5000;
+}
+
+
 // State object for receiving data from remote device.
 public class StateObject
 {
@@ -18,11 +30,10 @@ public class StateObject
 	public StringBuilder sb = new StringBuilder ();
 }
 
+
 public class VisionClient
 {
 	public bool isConnected = false;
-	// The port number for the remote device.
-	private const int port = 5000;
 	// ManualResetEvent instances signal completion.
 	private static ManualResetEvent connectDone = 
 		new ManualResetEvent (false);
@@ -41,7 +52,7 @@ public class VisionClient
 		try {  
 			// Establish the remote endpoint for the socket.  
 			IPAddress ipAddress = IPAddress.Parse ("127.0.0.1");
-			IPEndPoint remoteEP = new IPEndPoint (ipAddress, port);  
+			IPEndPoint remoteEP = new IPEndPoint (ipAddress, VisionClientConstants.PortNumber);  
 
 			// Create a TCP/IP socket.  
 			tcpSocket = new Socket (ipAddress.AddressFamily,  
@@ -50,7 +61,7 @@ public class VisionClient
 			// Connect to the remote endpoint.  
 			tcpSocket.BeginConnect (remoteEP,   
 				new AsyncCallback (ConnectCallback), tcpSocket);  
-			if (connectDone.WaitOne (5000)) {
+			if (connectDone.WaitOne (5000)) {  // Wait for connection with a 5 second timeout.
 				isConnected = true;
 			}
 			return isConnected;

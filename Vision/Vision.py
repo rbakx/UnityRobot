@@ -1,3 +1,6 @@
+# Vision module providing vision data.
+# It is capable of detecting the position and orientation of Aruco markers. 
+# It is also capable of detecting the position of a ball.
 import numpy as np
 import cv2
 import math

@@ -1,4 +1,6 @@
-#file:server.py
+# Vision server to provide vision data to Unity.
+# The vision data is provided by the Vision module in Vision.py.
+# For the socket communication jsonSocket.py is used which provides a socket server capable of sending and receiving JSON data.
 import time
 from JsonSocket import Server
 from Vision import VisionDetector
@@ -13,7 +15,7 @@ data = {
 }
 
 server = Server(host, port)
-visionDetector = VisionDetector(2)
+visionDetector = VisionDetector(1)
 data["videoSize"] = [visionDetector.videoSize[0],visionDetector.videoSize[1]]
 
 print('waiting for a connection')

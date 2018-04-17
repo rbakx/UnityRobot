@@ -10,20 +10,26 @@ using Newtonsoft.Json;
 using EV3WifiLib;
 
 
-// Example script which serves as a proof of concept of the EV3 bot controlled from Unity, represented by a Bot object.
-// In this simple example, the EV3 can be controlled using the WASD keys or the arrow keys.
+// ***** Description *****
+// Example script which serves as a proof of concept of a EV3 bot controlled from Unity, represented by a Bot object.
+// A connection between Unity and the bot and also between Unity and an OpenCV vision application is established.
 // It sends back sensor information from the gyro and motor encoders which is used to move the Bot object.
 // The scaling is such that one scale unit in Unity corresponds to 1 cm in the physical world.
 // The communication between Unity and the bot is done with EV3WifiLib.
 // The bot runs a TCP socket server and Unity a socket client, meaning the bot listens
 // to a specific port and Unity initiates the action by sending a request to this port.
-// Sending from Unity is done synchrounously as only short messages are sent and the call
-// only blocks until the data is sent, regardless whether or not the endpoint exists.
-// Receiving from the bot is done asynchrounously as receiving data back from the bot
-// after sending a request can take a while, depending on the server implementation on the bot.
+// Unity also runs a Vision socket client to connect to a Python Vision server providing the vision data.
+//
+// ***** Usage *****
+// This script contains a Bot simulator which is used by default.
+// When the 'Connect EV3' button is pressed a connection with the EV3 is made.
+// When the 'Connect vision' button is pressed, a connection with the vision server is made.
+// Whith the WASD keys or the arrow keys the Bot can be moved.
+// When 'T' is pressed, the bot moves towards the target, in this case a ball.
+// When 'G' is pressed, the bot pushes the bal towards the goal and scores.
 
 
-static class GeneralConstants
+static class BotConstants
 {
 	// 100 ms
 	public const int TimeTickMs = 100;
@@ -32,7 +38,8 @@ static class GeneralConstants
 	// 3 degrees per pwr per second, e.g. pwr = 30 -> 90 degrees per second.
 	public const float PowerToAnglePerTimeTick = 3.0f * TimeTickMs / 1000.0f;
 	// When waypoint is reached within this distance it is considered reached.
-	// A accuracy of 5 cm is possible but in case the bot does not seem to reach its waypoints, set it to 10.
+	// An accuracy of 5 cm is possible but in case the bot does not seem to reach its waypoints, set it to 10.
+	// The cause can happen when the camera is not calibrated properly.
 	public const float WayPointAccuracy = 5.0f;
 	// Recalculate path every RecalculatePathDistance cm.
 	public const float RecalculatePathDistance = 20.0f;
@@ -44,9 +51,13 @@ static class GeneralConstants
 	// If the bot has to drive into the ball to shoot the ShootingDistance must be negative!
 	// When ShootingDistance is zero, the bot just touches the ball.
 	public const float ShootingDistance = -10.0f;
+	// Delay taskReady going from 0 (not ready) to 1 (ready).
+	// This is needed when the taskReady message of a physical bot arrives earlier than the position update of the visionData.
+	public const int TaskReadyDelay = 500;
 }
 
-static class CameraConstants
+
+static class VisionConstants
 {
 	// Camera viewing angles.
 	public const float MaxViewingAngleLeft = -45.0f;
@@ -63,7 +74,7 @@ public class BotController : MonoBehaviour
 	public VisionData visionData = null;
 	private EV3WifiOrSimulation myEV3;
 	private VisionClient myVision;
-	private VisionCamera myVisionCamera;
+	private VisionDataHandling myVisionDataHandling;
 	private string ipAddress = "IP address";
 	private Rigidbody rb;
 	private Vector3 startPosition;
@@ -95,14 +106,13 @@ public class BotController : MonoBehaviour
 	private Vector3 ballPosition;
 	private Vector3 fromBehindGoalToBall2DNorm;
 
-	// To indicate bot is ready for the next task.
-
+	// Start is called on the frame when a script is enabled just before any of the Update methods is called the first time.
 	void Start ()
 	{
 		rb = GetComponent<Rigidbody> ();
 		myEV3 = new EV3WifiOrSimulation ();
 		myVision = new VisionClient ();
-		myVisionCamera = new VisionCamera ();
+		myVisionDataHandling = new VisionDataHandling ();
 		startPosition = rb.transform.position;
 		startRotation = rb.rotation;
 		targetObject = GameObject.Find ("Ball");
@@ -112,16 +122,20 @@ public class BotController : MonoBehaviour
 		ballRadius = GameObject.Find ("Ball").transform.localScale.x / 2.0f;
 		rb.transform.localScale = new Vector3 (15.0f, 12.5f, 26.0f);
 		lineRenderer = GetComponent<LineRenderer> ();
-		goalPosition = GameObject.Find ("Goal").transform.position;
+		goalPosition = GameObject.Find ("GoalLeft").transform.position;
 		// Small correction to put target just behind the goal line
 		behindGoalPosition = goalPosition + new Vector3(-10.0f,0.0f,0.0f);
 	}
 
+	// Update is called every frame, if the MonoBehaviour is enabled.
 	void Update ()
 	{
 
 	}
 
+	// This function is called every fixed framerate frame, if the MonoBehaviour is enabled.
+	// FixedUpdate should be used instead of Update when dealing with Rigidbody.
+	// For example when adding a force to a rigidbody, you have to apply the force every fixed frame inside FixedUpdate instead of every frame inside Update.
 	void FixedUpdate ()
 	{
 		// We connect / disconnect with the EV3 in this thread (and not in the GUI thread) because the EV3 SendMessage and ReceiveMessage also happen in this thread.
@@ -169,18 +183,22 @@ public class BotController : MonoBehaviour
 			lineRenderer.positionCount = 0; // Erase the current path
 		}
 
+
+		// Receive vision data.
+		// The ball position is updated in the scene.
 		if (myVision.isConnected) {
 			string msg = myVision.ReceiveMessage ();
 			visionData = JsonConvert.DeserializeObject<VisionData> (msg);
-			//targetObject.transform.position = myVisionCamera.CameraToWorldCoordinates (new Vector3(visionData.ball [1], ballRadius, visionData.ball [2]));
+			targetObject.transform.position = myVisionDataHandling.CameraToWorldCoordinates (new Vector3(visionData.ball [1], ballRadius, visionData.ball [2]));
 		} else {
 			visionData = null;
 		}
 			
 		ms = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
-		if (ms - msPrevious > GeneralConstants.TimeTickMs) {
-			// Below code is executed once per TimeTickMs. This to limit communication to physical bot.ScreenToWorldPoint
-			// Read input keys. Because we get here once in so many calls of FixedUpdate we have to use key events which last long enough.
+		if (ms - msPrevious > BotConstants.TimeTickMs) {
+			// Below code is executed once per TimeTickMs. This to limit communication to a physical bot.
+
+			// Read input keys. Because we arrive here once in so many calls of FixedUpdate we have to use key events which last long enough.
 			float moveHorizontal = Input.GetAxis ("Horizontal");
 			float moveVertical = Input.GetAxis ("Vertical");
 			bool fPressed = Input.GetKey (KeyCode.F);
@@ -195,7 +213,7 @@ public class BotController : MonoBehaviour
 
 			if (leftMouseButtonClicked) {
 				// Keep the y position.
-				mPosition.y = targetObject.transform.position.y;
+				mPosition.y = ballRadius;
 				targetObject.transform.position = mPosition;
 			}
 
@@ -226,24 +244,31 @@ public class BotController : MonoBehaviour
 			} else if (shootTheBall) {
 				if (!isBehindTheBall) {
 					ballPosition = targetObject.transform.position;
+					// Only continue if the ball is not behind the goal.
 					if (ballPosition.x > goalPosition.x) {
 						Vector3 fromBehindGoalToBall2D = ballPosition - behindGoalPosition;
 						// Make 2D.
 						fromBehindGoalToBall2D.y = 0;
 						fromBehindGoalToBall2DNorm = fromBehindGoalToBall2D.normalized;
-						isBehindTheBall = GotoWayPoint (ballPosition + fromBehindGoalToBall2DNorm * (botLength / 2 + ballRadius + GeneralConstants.BehindTheBallDistance));
+						isBehindTheBall = GotoWayPoint (ballPosition + fromBehindGoalToBall2DNorm * (botLength / 2 + ballRadius + BotConstants.BehindTheBallDistance));
 					}
 				} else {
-					// No go to the ball to shoot. The waypoint is calculated such that when GeneralConstants.ShootingDistance is zero,
-					// the front of the bot just touches the ball.
-					isBehindTheBall = !GotoWayPoint (ballPosition + fromBehindGoalToBall2DNorm * (botLength / 2 + ballRadius + GeneralConstants.ShootingDistance));
+					// Now go to the ball to shoot. The bot will be BehindTheBallDistance behind the ball.
+					// Make sure BehindTheBallDistance - ShootingDistance is less or equal than RecalculatePathDistance so that the shot can be taken in one move,
+					// otherwise the shot will be interrupted by a recalculation.
+					isBehindTheBall = !GotoWayPoint (ballPosition + fromBehindGoalToBall2DNorm * (botLength / 2 + ballRadius + BotConstants.ShootingDistance));
 					if (!isBehindTheBall) {
+						// After shooting drive backwards a bit to make sure:
+						// - There is no contact with the ball anymore and the bot does not obscure the ball for the camera. 
+						// - The bot stays behind the ball even when the ball moves a bit backwards (e.g. due to a tilted floor).
 						myEV3.SendMessage ("Move 0 -20 30", "0");	// Move angle (-180 .. 180) distance (cm) power (0..100)
 						msPreviousTask = ms;
 					}
 				}
 			}
 
+			// Receive data from bot and update the bot position in the scene.
+			// If vision is connected, the bot position is updated using the vision data.
 			string strMessage = myEV3.ReceiveMessage ("EV3_OUTBOX0");
 			// Check if the message is valid. The first message received after connecting with the EV3 is "Accept:EV340"
 			// indicating that the connection has been established. This is not a valid message.
@@ -255,17 +280,17 @@ public class BotController : MonoBehaviour
 						// If a new task just has been sent to the bot, the taskReady will still be on '1'.
 						// It takes about 3 time ticks of 100 ms to receive taskReady = 0 back from the bot.
 						// Therefore we force taskReady to 0 for 5 time ticks after the task has been sent.
-						if (ms - msPreviousTask < 5 * GeneralConstants.TimeTickMs) {
+						if (ms - msPreviousTask < 5 * BotConstants.TimeTickMs) {
 							taskReadyDirect = 0;
 						}
 
-						// Delay taskReady going from 0 to 1.
+						// Delay taskReady going from 0 (not ready) to 1 (ready).
 						// This is needed when the taskReady message of a physical bot arrives earlier than the position update of the visionData.
 						if (taskReadyDirect == 1) {
 							if (taskReadyPrevious == 0) {
 								taskReady = 0;
 								msStartTaskReadyExtension = ms;
-							} else if (ms - msStartTaskReadyExtension > 500) {
+							} else if (ms - msStartTaskReadyExtension > BotConstants.TaskReadyDelay) {
 								taskReady = 1;
 							}
 						} else {
@@ -283,7 +308,7 @@ public class BotController : MonoBehaviour
 								rb.MoveRotation (rb.rotation * rot);
 								rb.MovePosition (rb.transform.position + distanceMovedDelta * rb.transform.forward);
 							} else if (visionData.bot1 [0] <= 360) {
-								rb.transform.position = myVisionCamera.CameraToWorldCoordinates (new Vector3(visionData.bot1 [1], botHeight, visionData.bot1 [2]));;
+								rb.transform.position = myVisionDataHandling.CameraToWorldCoordinates (new Vector3(visionData.bot1 [1], botHeight, visionData.bot1 [2]));;
 								rb.rotation = Quaternion.Euler (0, visionData.bot1 [0], 0);
 							}
 						}
@@ -315,6 +340,8 @@ public class BotController : MonoBehaviour
 		}
 	}
 
+
+	// Move the specified position.
 	bool GotoWayPoint (Vector3 position)
 	{
 		bool finished = false;
@@ -326,8 +353,8 @@ public class BotController : MonoBehaviour
 			NavMeshPath path = new NavMeshPath ();
 			bool result = NavMesh.CalculatePath (botPosition, position, NavMesh.AllAreas, path);
 			if (result && path.corners.Length > 1) {
-				if (Vector3.Distance (botPosition, position) > GeneralConstants.WayPointAccuracy) {
-					float targetDistance = Math.Min (GeneralConstants.RecalculatePathDistance, Vector3.Distance (botPosition, path.corners [1]));
+				if (Vector3.Distance (botPosition, position) > BotConstants.WayPointAccuracy) {
+					float targetDistance = Math.Min (BotConstants.RecalculatePathDistance, Vector3.Distance (botPosition, path.corners [1]));
 					Quaternion rotPlus90 = Quaternion.Euler (0, 90, 0);
 					Quaternion rotMin90 = Quaternion.Euler (0, -90, 0);
 					var relativePos = path.corners [1] - botPosition;
@@ -407,6 +434,8 @@ public class BotController : MonoBehaviour
 	}
 }
 
+
+// Class used by JsonConvert.DeserializeObject to deserialize the JSON data received from the vision server.
 public class VisionData
 {    
 	public float[] videoSize = { 0.0f, 0.0f };
@@ -414,35 +443,45 @@ public class VisionData
 	public float[] ball = { 0.0f, 0.0f, 0.0f };
 }
 
-public class VisionCamera
+
+// Class for handle / calibrate vision data.
+public class VisionDataHandling
 {
 	private GameObject bot;
 	private VisionData visionData;
 	private float xMin, xMax, zMin, zMax;
 
-	public VisionCamera()
+	public VisionDataHandling()
 	{
+		// Get the Unity ground dimensions.
 		bot = GameObject.Find ("Bot");
 		var groundObject = GameObject.Find ("Ground");
 		xMin = groundObject.GetComponent<Renderer> ().bounds.min.x;
 		xMax = groundObject.GetComponent<Renderer> ().bounds.max.x;
 		zMin = groundObject.GetComponent<Renderer> ().bounds.min.z;
-		zMax = groundObject.GetComponent<Renderer> ().bounds.max.z;	}
+		zMax = groundObject.GetComponent<Renderer> ().bounds.max.z;
+	}
 
 	public Vector3 CameraToWorldCoordinates(Vector3 pVision)
 	{
 		visionData = bot.GetComponent<BotController> ().visionData;
 
+		// Map the camera coordinates to the Unity world coordintes.
+		// Camera coordinates:
+		// Top left = (x,z) = (0,0).
+		// x increases from left to right and z increases from top to bottom.
+		// Unity world coordinates:
+		// The middle of the Unity ground is (x,z) = (0,0).
+		// x increases from left to right and z increases from bottom to top.
 		Vector3 pWorld = new Vector3();
 		pWorld.x = map (pVision.x, 0, visionData.videoSize [0], xMin, xMax);
 		pWorld.y = pVision.y;
 		pWorld.z = map (pVision.z, visionData.videoSize [1], 0, zMin, zMax);
-		float tanX = pWorld.x / CameraConstants.Height;
-		float tanZ = pWorld.z / CameraConstants.Height;
+		// Compensate for the heigth of the detected video feature.
+		float tanX = pWorld.x / VisionConstants.Height;
+		float tanZ = pWorld.z / VisionConstants.Height;
 		pWorld.x = pWorld.x - pVision.y * tanX;
 		pWorld.z = pWorld.z - pVision.y * tanZ;
-		//pWorld.x = CameraConstants.Height * (float) Math.Tan(Math.Asin(pWorld.x * 0.707 / xMax));
-		//pWorld.z = CameraConstants.Height * (float) Math.Tan(Math.Asin(pWorld.z * 0.707 / xMax));
 		return pWorld;
 	}
 
@@ -452,6 +491,8 @@ public class VisionCamera
 	}
 }
 
+
+// Class for communication to EV3 or simulation. The simulation mimics the EV3 with regard to sending and receiving messages.
 public class EV3WifiOrSimulation
 {
 	public bool simOnly = true;
@@ -466,8 +507,8 @@ public class EV3WifiOrSimulation
 	private float distanceToMoveRemaining = 0.0f;
 	private float angleToMovePerTimeTick, distanceToMovePerTimeTick;
 	private float angleToMove, distanceToMove, pwr;
-	private int taskReady = 1;
 	// To indicate bot is ready for the next task
+	private int taskReady = 1;
 
 	public EV3WifiOrSimulation ()
 	{
@@ -532,8 +573,8 @@ public class EV3WifiOrSimulation
 		if (newMessageArrived) {
 			string[] messageStrings = lastMessageSent.Split (' ');
 			if (messageStrings [0] == "Move" && float.TryParse (messageStrings [1], out angleToMove) && float.TryParse (messageStrings [2], out distanceToMove) && float.TryParse (messageStrings [3], out pwr)) {
-				angleToMovePerTimeTick = pwr * (angleToMove > 0 ? GeneralConstants.PowerToAnglePerTimeTick : -GeneralConstants.PowerToAnglePerTimeTick);
-				distanceToMovePerTimeTick = pwr * (distanceToMove > 0 ? GeneralConstants.PowerToDistancePerTimeTick : -GeneralConstants.PowerToDistancePerTimeTick);
+				angleToMovePerTimeTick = pwr * (angleToMove > 0 ? BotConstants.PowerToAnglePerTimeTick : -BotConstants.PowerToAnglePerTimeTick);
+				distanceToMovePerTimeTick = pwr * (distanceToMove > 0 ? BotConstants.PowerToDistancePerTimeTick : -BotConstants.PowerToDistancePerTimeTick);
 				angleToMoveRemaining = angleToMove != 0 ? Math.Abs (angleToMove) - Math.Abs (angleToMovePerTimeTick) : 0;
 				distanceToMoveRemaining = distanceToMove != 0 ? Math.Abs (distanceToMove) - Math.Abs (distanceToMovePerTimeTick) : 0;
 				newMessageArrived = false;

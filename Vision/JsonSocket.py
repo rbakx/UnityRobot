@@ -1,4 +1,4 @@
-#file:jsonsocket.py
+#file:jsonSocket.py
 #https://github.com/mdebbar/jsonsocket
 import json, socket
 
