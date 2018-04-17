@@ -13,7 +13,7 @@ data = {
 }
 
 server = Server(host, port)
-visionDetector = VisionDetector(1)
+visionDetector = VisionDetector(2)
 data["videoSize"] = [visionDetector.videoSize[0],visionDetector.videoSize[1]]
 
 print('waiting for a connection')

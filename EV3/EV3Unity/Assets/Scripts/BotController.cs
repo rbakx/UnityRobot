@@ -172,7 +172,7 @@ public class BotController : MonoBehaviour
 		if (myVision.isConnected) {
 			string msg = myVision.ReceiveMessage ();
 			visionData = JsonConvert.DeserializeObject<VisionData> (msg);
-			targetObject.transform.position = myVisionCamera.CameraToWorldCoordinates (new Vector3(visionData.ball [1], ballRadius, visionData.ball [2]));
+			//targetObject.transform.position = myVisionCamera.CameraToWorldCoordinates (new Vector3(visionData.ball [1], ballRadius, visionData.ball [2]));
 		} else {
 			visionData = null;
 		}
@@ -418,23 +418,31 @@ public class VisionCamera
 {
 	private GameObject bot;
 	private VisionData visionData;
+	private float xMin, xMax, zMin, zMax;
 
 	public VisionCamera()
 	{
 		bot = GameObject.Find ("Bot");
-	}
+		var groundObject = GameObject.Find ("Ground");
+		xMin = groundObject.GetComponent<Renderer> ().bounds.min.x;
+		xMax = groundObject.GetComponent<Renderer> ().bounds.max.x;
+		zMin = groundObject.GetComponent<Renderer> ().bounds.min.z;
+		zMax = groundObject.GetComponent<Renderer> ().bounds.max.z;	}
 
-	public Vector3 CameraToWorldCoordinates(Vector3 pCamera)
+	public Vector3 CameraToWorldCoordinates(Vector3 pVision)
 	{
 		visionData = bot.GetComponent<BotController> ().visionData;
 
 		Vector3 pWorld = new Vector3();
-		float angleX = map (pCamera.x, 0, visionData.videoSize [0], CameraConstants.MaxViewingAngleLeft, CameraConstants.MaxViewingAngleRight);
-		float angleZ = map (pCamera.z, 0, visionData.videoSize [1], CameraConstants.MaxViewingAngleTop, CameraConstants.MaxViewingAngleBottom);
-		float tanX = (float) Math.Tan (ConvertToRadians (angleX));
-		float tanZ = (float) Math.Tan (ConvertToRadians (angleZ));
-		pWorld.x = (CameraConstants.Height - pCamera.y) * tanX;
-		pWorld.z = (CameraConstants.Height - pCamera.y) * tanZ;
+		pWorld.x = map (pVision.x, 0, visionData.videoSize [0], xMin, xMax);
+		pWorld.y = pVision.y;
+		pWorld.z = map (pVision.z, visionData.videoSize [1], 0, zMin, zMax);
+		float tanX = pWorld.x / CameraConstants.Height;
+		float tanZ = pWorld.z / CameraConstants.Height;
+		pWorld.x = pWorld.x - pVision.y * tanX;
+		pWorld.z = pWorld.z - pVision.y * tanZ;
+		//pWorld.x = CameraConstants.Height * (float) Math.Tan(Math.Asin(pWorld.x * 0.707 / xMax));
+		//pWorld.z = CameraConstants.Height * (float) Math.Tan(Math.Asin(pWorld.z * 0.707 / xMax));
 		return pWorld;
 	}
 
@@ -442,12 +450,6 @@ public class VisionCamera
 	{
 		return b1 + (s - a1) * (b2 - b1) / (a2 - a1);
 	}
-
-	private float ConvertToRadians(float angle)
-	{
-		return ((float) Math.PI / 180) * angle;
-	}
-
 }
 
 public class EV3WifiOrSimulation
