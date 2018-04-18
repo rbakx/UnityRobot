@@ -11,20 +11,22 @@ using EV3WifiLib;
 
 
 // ***** Description *****
-// Example script which serves as a proof of concept of a EV3 bot controlled from Unity, represented by a Bot object.
-// A connection between Unity and the bot and also between Unity and an OpenCV vision application is established.
-// It sends back sensor information from the gyro and motor encoders which is used to move the Bot object.
+// Example script which serves as a proof of concept of a EV3 bot controlled from Unity, represented by a bot object.
+// A connection is established between Unity and the bot and also between Unity and a Python vision server running an OpenCV vision application.
+// The bot sends sensor information from the gyro and motor encoders to Unity.
+// In addition Unity receives vision data from the Python vision server.
+// Both sensor data and vision data are used to position the bot in the Unity scene.
 // The scaling is such that one scale unit in Unity corresponds to 1 cm in the physical world.
-// The communication between Unity and the bot is done with EV3WifiLib.
-// The bot runs a TCP socket server and Unity a socket client, meaning the bot listens
-// to a specific port and Unity initiates the action by sending a request to this port.
-// Unity also runs a Vision socket client to connect to a Python Vision server providing the vision data.
+// The communication between Unity and the bot is done using the OIT11 EV3 TCP communication library EV3WifiLib.
+// The communication between Unity and the vision server is done using a TCP socket client at the Unity side.
+// This script contains a bot simulator to simulate the communication to the bot for testing and debugging purposes.
+// As a demo, the bot can push a ball towards a goal and score.
 //
 // ***** Usage *****
-// This script contains a Bot simulator which is used by default.
+// When the script starts the bot simulator is active by default.
 // When the 'Connect EV3' button is pressed a connection with the EV3 is made.
 // When the 'Connect vision' button is pressed, a connection with the vision server is made.
-// Whith the WASD keys or the arrow keys the Bot can be moved.
+// Whith the WASD keys or the arrow keys the bot can be moved.
 // When 'T' is pressed, the bot moves towards the target, in this case a ball.
 // When 'G' is pressed, the bot pushes the bal towards the goal and scores.
 
