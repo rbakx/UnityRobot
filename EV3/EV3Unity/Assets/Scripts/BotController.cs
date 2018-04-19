@@ -16,6 +16,7 @@ using EV3WifiLib;
 // The bot sends sensor information from the gyro and motor encoders to Unity.
 // In addition Unity receives vision data from the Python vision server.
 // Both sensor data and vision data are used to position the bot in the Unity scene.
+// The vision data comes from a camera above the scene. This scene can be projected by a beamer on the floor.
 // The scaling is such that one scale unit in Unity corresponds to 1 cm in the physical world.
 // The communication between Unity and the bot is done using the OIT11 EV3 TCP communication library EV3WifiLib.
 // The communication between Unity and the vision server is done using a TCP socket client at the Unity side.
@@ -61,13 +62,12 @@ static class BotConstants
 
 static class VisionConstants
 {
-	// Camera viewing angles.
-	public const float MaxViewingAngleLeft = -45.0f;
-	public const float MaxViewingAngleRight = 45.0f;
-	public const float MaxViewingAngleTop = 25.3125f;
-	public const float MaxViewingAngleBottom = -25.3125f;
 	// Height of camera above ground.
-	public const float Height = 250.0f;
+	public const float CameraHeight = 250.0f;
+	// Margin of the camera image around the beamer projection as a percentage of the length / width.
+	// This margin is present because the camera sees the complete beamer projection including a margin.
+	// Cropping the camera image with this margin enables matching the beamer projection woth the cropped camera image.
+	public const float CameraMargin = 0.1f;
 }
 
 
@@ -124,9 +124,9 @@ public class BotController : MonoBehaviour
 		ballRadius = GameObject.Find ("Ball").transform.localScale.x / 2.0f;
 		rb.transform.localScale = new Vector3 (15.0f, 12.5f, 26.0f);
 		lineRenderer = GetComponent<LineRenderer> ();
-		goalPosition = GameObject.Find ("GoalLeft").transform.position;
+		goalPosition = GameObject.Find ("GoalRight").transform.position;
 		// Small correction to put target just behind the goal line
-		behindGoalPosition = goalPosition + new Vector3(-10.0f,0.0f,0.0f);
+		behindGoalPosition = goalPosition + new Vector3(Math.Sign(goalPosition.x) * 10.0f,0.0f,0.0f);
 	}
 
 	// Update is called every frame, if the MonoBehaviour is enabled.
@@ -247,7 +247,7 @@ public class BotController : MonoBehaviour
 				if (!isBehindTheBall) {
 					ballPosition = targetObject.transform.position;
 					// Only continue if the ball is not behind the goal.
-					if (ballPosition.x > goalPosition.x) {
+					if (Math.Abs(ballPosition.x) < Math.Abs(goalPosition.x)) {
 						Vector3 fromBehindGoalToBall2D = ballPosition - behindGoalPosition;
 						// Make 2D.
 						fromBehindGoalToBall2D.y = 0;
@@ -451,22 +451,30 @@ public class VisionDataHandling
 {
 	private GameObject bot;
 	private VisionData visionData;
-	private float xMin, xMax, zMin, zMax;
+	private float xMinWorld, xMaxWorld, zMinWorld, zMaxWorld;
+	private float xMinCamera, xMaxCamera, zMinCamera, zMaxCamera;
 
 	public VisionDataHandling()
 	{
-		// Get the Unity ground dimensions.
+		// Get the Unity world dimensions.
 		bot = GameObject.Find ("Bot");
 		var groundObject = GameObject.Find ("Ground");
-		xMin = groundObject.GetComponent<Renderer> ().bounds.min.x;
-		xMax = groundObject.GetComponent<Renderer> ().bounds.max.x;
-		zMin = groundObject.GetComponent<Renderer> ().bounds.min.z;
-		zMax = groundObject.GetComponent<Renderer> ().bounds.max.z;
+		xMinWorld = groundObject.GetComponent<Renderer> ().bounds.min.x;
+		xMaxWorld = groundObject.GetComponent<Renderer> ().bounds.max.x;
+		zMinWorld = groundObject.GetComponent<Renderer> ().bounds.min.z;
+		zMaxWorld = groundObject.GetComponent<Renderer> ().bounds.max.z;
 	}
 
 	public Vector3 CameraToWorldCoordinates(Vector3 pVision)
 	{
 		visionData = bot.GetComponent<BotController> ().visionData;
+		// Crop the camera image to match the beamer projection.
+		var marginCameraX = visionData.videoSize [0] * VisionConstants.CameraMargin;
+		var marginCameraZ = visionData.videoSize [1] * VisionConstants.CameraMargin;
+		xMinCamera = marginCameraX;
+		xMaxCamera = visionData.videoSize [0] - marginCameraX;
+		zMinCamera = marginCameraZ;
+		zMaxCamera = visionData.videoSize [1] - marginCameraZ;
 
 		// Map the camera coordinates to the Unity world coordintes.
 		// Camera coordinates:
@@ -476,12 +484,12 @@ public class VisionDataHandling
 		// The middle of the Unity ground is (x,z) = (0,0).
 		// x increases from left to right and z increases from bottom to top.
 		Vector3 pWorld = new Vector3();
-		pWorld.x = map (pVision.x, 0, visionData.videoSize [0], xMin, xMax);
+		pWorld.x = map (pVision.x, xMinCamera, xMaxCamera, xMinWorld, xMaxWorld);
 		pWorld.y = pVision.y;
-		pWorld.z = map (pVision.z, visionData.videoSize [1], 0, zMin, zMax);
+		pWorld.z = map (pVision.z, zMaxCamera, zMinCamera, zMinWorld, zMaxWorld);
 		// Compensate for the heigth of the detected video feature.
-		float tanX = pWorld.x / VisionConstants.Height;
-		float tanZ = pWorld.z / VisionConstants.Height;
+		float tanX = pWorld.x / VisionConstants.CameraHeight;
+		float tanZ = pWorld.z / VisionConstants.CameraHeight;
 		pWorld.x = pWorld.x - pVision.y * tanX;
 		pWorld.z = pWorld.z - pVision.y * tanZ;
 		return pWorld;
