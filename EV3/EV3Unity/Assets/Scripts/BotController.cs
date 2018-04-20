@@ -76,7 +76,7 @@ public class BotController : MonoBehaviour
 	public VisionData visionData = null;
 	private EV3WifiOrSimulation myEV3;
 	private VisionClient myVision;
-	private VisionDataHandling myVisionDataHandling;
+	private VisionDataHandling myVisionDataHandling = null;
 	private string ipAddress = "IP address";
 	private Rigidbody rb;
 	private Vector3 startPosition;
@@ -114,7 +114,6 @@ public class BotController : MonoBehaviour
 		rb = GetComponent<Rigidbody> ();
 		myEV3 = new EV3WifiOrSimulation ();
 		myVision = new VisionClient ();
-		myVisionDataHandling = new VisionDataHandling ();
 		startPosition = rb.transform.position;
 		startRotation = rb.rotation;
 		targetObject = GameObject.Find ("Ball");
@@ -191,6 +190,10 @@ public class BotController : MonoBehaviour
 		if (myVision.isConnected) {
 			string msg = myVision.ReceiveMessage ();
 			visionData = JsonConvert.DeserializeObject<VisionData> (msg);
+			// Create myVisionDataHandling after visionData is valid.
+			if (myVisionDataHandling == null) {
+				myVisionDataHandling = new VisionDataHandling ();
+			}
 			targetObject.transform.position = myVisionDataHandling.CameraToWorldCoordinates (new Vector3(visionData.ball [1], ballRadius, visionData.ball [2]));
 		} else {
 			visionData = null;
@@ -463,10 +466,7 @@ public class VisionDataHandling
 		xMaxWorld = groundObject.GetComponent<Renderer> ().bounds.max.x;
 		zMinWorld = groundObject.GetComponent<Renderer> ().bounds.min.z;
 		zMaxWorld = groundObject.GetComponent<Renderer> ().bounds.max.z;
-	}
 
-	public Vector3 CameraToWorldCoordinates(Vector3 pVision)
-	{
 		visionData = bot.GetComponent<BotController> ().visionData;
 		// Crop the camera image to match the beamer projection.
 		var marginCameraX = visionData.videoSize [0] * VisionConstants.CameraMargin;
@@ -475,7 +475,10 @@ public class VisionDataHandling
 		xMaxCamera = visionData.videoSize [0] - marginCameraX;
 		zMinCamera = marginCameraZ;
 		zMaxCamera = visionData.videoSize [1] - marginCameraZ;
+	}
 
+	public Vector3 CameraToWorldCoordinates(Vector3 pVision)
+	{
 		// Map the camera coordinates to the Unity world coordintes.
 		// Camera coordinates:
 		// Top left = (x,z) = (0,0).
