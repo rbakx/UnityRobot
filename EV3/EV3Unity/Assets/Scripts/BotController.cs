@@ -123,7 +123,7 @@ public class BotController : MonoBehaviour
 		ballRadius = GameObject.Find ("Ball").transform.localScale.x / 2.0f;
 		rb.transform.localScale = new Vector3 (15.0f, 12.5f, 26.0f);
 		lineRenderer = GetComponent<LineRenderer> ();
-		goalPosition = GameObject.Find ("GoalRight").transform.position;
+		goalPosition = GameObject.Find ("GoalLeft").transform.position;
 		// Small correction to put target just behind the goal line
 		behindGoalPosition = goalPosition + new Vector3(Math.Sign(goalPosition.x) * 10.0f,0.0f,0.0f);
 	}
