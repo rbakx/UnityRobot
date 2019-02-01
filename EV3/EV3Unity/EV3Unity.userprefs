@@ -1,8 +1,8 @@
 ﻿<Properties StartupItem="Assembly-CSharp.csproj">
   <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" PreferredExecutionTarget="Unity.Instance.Unity Editor" />
-  <MonoDevelop.Ide.Workbench ActiveDocument="Assets/Scripts/BotController.cs">
+  <MonoDevelop.Ide.Workbench ActiveDocument="Assets/VisionClient.cs">
     <Files>
-      <File FileName="Assets/Scripts/BotController.cs" Line="114" Column="35" />
+      <File FileName="Assets/Scripts/BotController.cs" Line="316" Column="107" />
       <File FileName="Assets/VisionClient.cs" Line="1" Column="1" />
     </Files>
   </MonoDevelop.Ide.Workbench>
